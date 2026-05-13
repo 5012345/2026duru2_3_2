@@ -91,19 +91,25 @@
                 const eq2 = `${formatTerm(1, 'x', true)}${formatTerm(-b, 'y')} = ${c2}`;
                 return { eqs: [eq1, eq2], answer: [x, y] };
             } else if (difficulty === 'yellow') {
-                const a = Math.floor(Math.random() * 3) + 2;
-                const b = Math.floor(Math.random() * 3) + 2;
-                const c1 = a * x + b * y;
+                let a = Math.floor(Math.random() * 3) + 2;
+                let b = Math.floor(Math.random() * 3) + 2;
                 let a2 = Math.floor(Math.random() * 2) + 2;
-                while(a2 === a) a2++;
+                // 두 식이 동치가 되지 않도록 계수 비율 체크 (a/a2 != b/1)
+                while (a === b * a2) {
+                    a = Math.floor(Math.random() * 5) + 2;
+                    b = Math.floor(Math.random() * 5) + 2;
+                }
+                const c1 = a * x + b * y;
                 const c2 = a2 * x + 1 * y;
                 const eq1 = `${formatTerm(a, 'x', true)}${formatTerm(b, 'y')} = ${c1}`;
                 const eq2 = `${formatTerm(a2, 'x', true)}${formatTerm(1, 'y')} = ${c2}`;
                 return { eqs: [eq1, eq2], answer: [x, y] };
             } else {
                 const p = Math.floor(Math.random() * 5) + 1;
-                const a = Math.floor(Math.random() * 3) + 2;
-                const b = Math.floor(Math.random() * 4) + 2;
+                let a = Math.floor(Math.random() * 3) + 2;
+                let b = Math.floor(Math.random() * 4) + 2;
+                // 동치 방지 (a/1 != b/1 -> a != b)
+                while (a === b) { a = Math.floor(Math.random() * 5) + 2; }
                 const c1 = a * (x + p) + b * y;
                 const c2 = x + y;
                 const eq1 = `${a}(x + ${p})${formatTerm(b, 'y')} = ${c1}`;
@@ -187,7 +193,10 @@
 
                 if (gameState.phase === 'round_result' && allTeams.length > 0) {
                     const allReady = allTeams.every(t => gameState.readyTeams?.includes(t.id));
-                    if (allReady) startNextRound();
+                    // 5라운드까지만 자동 시작 수행
+                    if (allReady && gameState.round < 5) {
+                        startNextRound();
+                    }
                 }
             }, [allTeams, gameState, fb, role]);
 
@@ -340,7 +349,13 @@
                                 <section className="bg-slate-900 p-6 rounded-3xl border border-slate-800 shadow-xl">
                                     <h3 className="text-xs font-bold text-blue-400 mb-6 uppercase tracking-widest">Game Management</h3>
                                     <div className="grid grid-cols-2 gap-4">
-                                        <button onClick={startNextRound} className="bg-blue-600 py-4 rounded-2xl font-bold shadow-lg">미션 { (gameState?.round || 0) + 1 } 시작</button>
+                                        <button 
+                                            onClick={startNextRound} 
+                                            disabled={gameState?.round >= 5}
+                                            className="bg-blue-600 py-4 rounded-2xl font-bold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            {gameState?.round >= 5 ? "미션 종료" : `미션 ${(gameState?.round || 0) + 1} 시작`}
+                                        </button>
                                         <button onClick={startInvestment} className="bg-emerald-600 py-4 rounded-2xl font-bold shadow-lg">투자 시작</button>
                                     </div>
                                     <button onClick={resetGame} className="mt-4 text-[10px] text-rose-500 font-black uppercase tracking-widest w-full text-right hover:text-rose-400">System Reset</button>
@@ -447,8 +462,13 @@
                                 {correct ? "A급 힌트를 하나 획득하셨습니다." : "B급 힌트를 하나 획득하셨습니다."}
                             </p>
                             {!ready ? (
-                                <button onClick={() => fb.updateDoc(fb.doc(fb.getFirestore(), 'investment_game', 'state', 'public', gameDocId), { readyTeams: fb.arrayUnion(role) })} className="w-full bg-blue-600 py-4 rounded-2xl font-bold">다음 라운드 준비</button>
-                            ) : <div className="text-emerald-500 font-black animate-pulse">대기 중...</div>}
+                                <button 
+                                    onClick={() => fb.updateDoc(fb.doc(fb.getFirestore(), 'investment_game', 'state', 'public', gameDocId), { readyTeams: fb.arrayUnion(role) })} 
+                                    className="w-full bg-blue-600 py-4 rounded-2xl font-bold"
+                                >
+                                    {gameState.round === 5 ? "투자 경연대회 참가" : "다음 라운드 준비"}
+                                </button>
+                            ) : <div className="text-emerald-500 font-black animate-pulse">{gameState.round === 5 ? "투자 시작을 기다리는 중..." : "대기 중..."}</div>}
                         </div>
                     </div>
                 );
