@@ -45,31 +45,16 @@
             Coins, Package, Info, Play, RefreshCw, Trophy, AlertCircle, ExternalLink, X, ChevronRight
         } = window.LucideReact || {};
 
-        const firebaseConfig = {
-            apiKey: "AIzaSyCB96k3FfAx7qWh7RUuvp00m3FnbHrdDN8",
-            authDomain: "duru10301.firebaseapp.com",
-            projectId: "duru10301",
-            storageBucket: "duru10301.firebasestorage.app",
-            messagingSenderId: "870062414256",
-            appId: "1:870062414256:web:a965fc9674c63367f21e75",
-        };
-
-        const gameDocId = "global_game_session"; 
-        const ADMIN_PASSWORD = "123123";
-        const ASSETS = [
-            { id: 'flour', name: '밀가루', icon: '🍞' },
-            { id: 'oil', name: '석유', icon: '🛢️' },
-            { id: 'wood', name: '목재', icon: '🪵' },
-            { id: 'coke', name: '콜라', icon: '🥤' }
-        ];
-        const DAYS = ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일'];
-        const PW_TIME_LIMIT = 100; // 100초 제한
-        const DAY_TIME_LIMIT = 60; // 투자 1분
-
-        const SafeIcon = ({ name, size = 18, className = "" }) => {
-            const IconComp = window.LucideReact ? window.LucideReact[name] : null;
-            if (!IconComp) return <span style={{ width: size, height: size, display: 'inline-block' }} className={className} />;
-            return <IconComp size={size} className={className} />;
+        const formatTerm = (coeff, varName, isFirst = false) => {
+            if (coeff === 0) return "";
+            let str = "";
+            if (coeff === 1) str = varName;
+            else if (coeff === -1) str = "-" + varName;
+            else str = coeff + varName;
+            
+            if (!isFirst && coeff > 0) return " + " + str;
+            if (!isFirst && coeff < 0) return " - " + str.substring(1); // Replace +- with -
+            return str;
         };
 
         const generateSystem = (difficulty) => {
@@ -78,36 +63,32 @@
 
             if (difficulty === 'green') {
                 const b = Math.random() > 0.5 ? 1 : -1;
+                // x + y = c, x - y = d (계수 1 생략 적용)
                 const c1 = x + b * y;
                 const c2 = x - b * y;
-                return { 
-                    eqs: [`x ${b > 0 ? '+' : ''}${b}y = ${c1}`, `x ${-b > 0 ? '+' : ''}${-b}y = ${c2}`],
-                    answer: [x, y]
-                };
+                const eq1 = `${formatTerm(1, 'x', true)}${formatTerm(b, 'y')} = ${c1}`;
+                const eq2 = `${formatTerm(1, 'x', true)}${formatTerm(-b, 'y')} = ${c2}`;
+                return { eqs: [eq1, eq2], answer: [x, y] };
             } else if (difficulty === 'yellow') {
                 const a = Math.floor(Math.random() * 3) + 2;
                 const b = Math.floor(Math.random() * 3) + 2;
                 const c1 = a * x + b * y;
                 let a2 = Math.floor(Math.random() * 2) + 2;
                 while(a2 === a) a2++;
-                const b2 = 1;
+                const b2 = 1; // y의 계수가 1인 경우
                 const c2 = a2 * x + b2 * y;
-                return {
-                    eqs: [`${a}x + ${b}y = ${c1}`, `${a2}x + y = ${c2}`],
-                    answer: [x, y]
-                };
+                const eq1 = `${formatTerm(a, 'x', true)}${formatTerm(b, 'y')} = ${c1}`;
+                const eq2 = `${formatTerm(a2, 'x', true)}${formatTerm(b2, 'y')} = ${c2}`;
+                return { eqs: [eq1, eq2], answer: [x, y] };
             } else {
                 const p = Math.floor(Math.random() * 5) + 1;
                 const a = Math.floor(Math.random() * 3) + 2;
                 const b = Math.floor(Math.random() * 4) + 2;
                 const c1 = a * (x + p) + b * y;
-                const a2 = 1;
-                const b2 = 1;
-                const c2 = a2 * x + b2 * y;
-                return {
-                    eqs: [`${a}(x + ${p}) + ${b}y = ${c1}`, `x + y = ${c2}`],
-                    answer: [x, y]
-                };
+                const c2 = x + y;
+                const eq1 = `${a}(x + ${p})${formatTerm(b, 'y')} = ${c1}`;
+                const eq2 = `${formatTerm(1, 'x', true)}${formatTerm(1, 'y')} = ${c2}`;
+                return { eqs: [eq1, eq2], answer: [x, y] };
             }
         };
 
@@ -118,7 +99,32 @@
         };
 
         function App() {
-            const [fb, setFb] = useState(null);
+            // ... existing state ...
+
+            useEffect(() => {
+                if (!fb || role !== 'admin') return;
+                const db = fb.getFirestore();
+
+                // 1. 모든 조가 정답 입력 완료 시 결과창으로 자동 전환
+                if (gameState?.phase === 'password' && allTeams.length > 0) {
+                    const allSolved = allTeams.every(t => t.solvedRounds?.includes(gameState.round));
+                    if (allSolved) {
+                        fb.updateDoc(fb.doc(db, 'investment_game', 'state', 'public', gameDocId), { 
+                            phase: 'round_result', 
+                            readyTeams: [] 
+                        });
+                    }
+                }
+
+                // 2. 모든 조가 다음 라운드 준비 완료 시 자동 다음 미션 시작
+                if (gameState?.phase === 'round_result' && allTeams.length > 0) {
+                    const allReady = allTeams.every(t => gameState.readyTeams?.includes(t.id));
+                    if (allReady) {
+                        startNextRound();
+                    }
+                }
+            }, [allTeams, gameState, fb, role]);
+
             const [role, setRole] = useState(null); 
             const [gameState, setGameState] = useState(null);
             const [myTeamData, setMyTeamData] = useState(null);
