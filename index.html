@@ -11,25 +11,24 @@
     <script src="https://unpkg.com/lucide-react@latest"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=Fira+Code:wght@400;700&display=swap');
-        body { font-family: 'Inter', sans-serif; }
+        body { font-family: 'Inter', sans-serif; background-color: #020617; }
         .math-font { font-family: 'Fira Code', monospace; }
-        @keyframes spin-slow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        .animate-spin-slow { animation: spin-slow 3s linear infinite; }
-        input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { 
-            -webkit-appearance: none; margin: 0; 
-        }
         .fade-in { animation: fadeIn 0.5s ease-out forwards; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .glow-gold { box-shadow: 0 0 25px rgba(234, 179, 8, 0.6); border: 4px solid #eab308 !important; }
+        .glow-gold { box-shadow: 0 0 30px rgba(234, 179, 8, 0.7); border: 4px solid #eab308 !important; }
         .blackout-overlay { 
             position: fixed; inset: 0; background: black; z-index: 100; 
-            display: flex; items-center: center; justify-content: center;
+            display: flex; align-items: center; justify-content: center;
             opacity: 0; pointer-events: none; transition: opacity 0.5s ease;
         }
         .blackout-overlay.active { opacity: 1; pointer-events: auto; }
+        .hint-card-a { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); transition: all 0.3s ease; }
+        .hint-card-b { background: linear-gradient(135deg, #94a3b8 0%, #475569 100%); transition: all 0.3s ease; }
+        .hint-card:hover { transform: translateY(-5px); filter: brightness(1.1); cursor: pointer; }
+        input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
     </style>
 </head>
-<body class="bg-slate-950 text-slate-100 antialiased overflow-x-hidden">
+<body class="text-slate-100 antialiased overflow-x-hidden">
     <div id="root"></div>
 
     <script type="module">
@@ -48,7 +47,7 @@
         const { useState, useEffect, useMemo, useRef } = React;
         const { 
             TrendingUp, Timer, Users, Lock, Unlock, 
-            Coins, Package, Info, Play, RefreshCw, Trophy, AlertCircle, ExternalLink, X, ChevronRight
+            Coins, Package, Info, Play, RefreshCw, Trophy, AlertCircle, ExternalLink, X, ChevronRight, FileText
         } = window.LucideReact || {};
 
         const firebaseConfig = {
@@ -84,6 +83,18 @@
             return str;
         };
 
+        const generateNormalPrice = () => {
+            // 중앙값 10000, 범위 1000~20000
+            // 3개의 랜덤값을 더해 정규분포(종 모양) 근사
+            const rand = (Math.random() + Math.random() + Math.random()) / 3; 
+            // rand는 0~1 사이이며 0.5(중앙) 근처 확률이 높음
+            const min = 1000;
+            const max = 20000;
+            // 1000원 단위 절사
+            let price = Math.round((min + rand * (max - min)) / 1000) * 1000;
+            return Math.min(max, Math.max(min, price));
+        };
+
         const generateSystem = (difficulty) => {
             const x = Math.floor(Math.random() * 9) + 1;
             const y = Math.floor(Math.random() * 9) + 1;
@@ -99,10 +110,8 @@
                 let a = Math.floor(Math.random() * 3) + 2;
                 let b = Math.floor(Math.random() * 3) + 2;
                 let a2 = Math.floor(Math.random() * 2) + 2;
-                while (a === b * a2) { // 동치 방지
-                    a = Math.floor(Math.random() * 5) + 2;
-                    b = Math.floor(Math.random() * 5) + 2;
-                }
+                // 동치 방지 로직 강화
+                while (a === b * a2) { a = Math.floor(Math.random() * 5) + 2; }
                 const c1 = a * x + b * y;
                 const c2 = a2 * x + 1 * y;
                 const eq1 = `${formatTerm(a, 'x', true)}${formatTerm(b, 'y')} = ${c1}`;
@@ -183,7 +192,6 @@
                 if (!fb || role !== 'admin' || !gameState) return;
                 const db = fb.getFirestore();
 
-                // 1. 모든 조가 풀었을 때 즉시 결과 화면으로
                 if (gameState.phase === 'password' && allTeams.length > 0) {
                     const allSolved = allTeams.every(t => t.solvedRounds?.includes(gameState.round));
                     if (allSolved) {
@@ -193,7 +201,6 @@
                     }
                 }
 
-                // 2. 모든 조가 준비 완료 되었을 때 다음 라운드 자동 시작
                 if (gameState.phase === 'round_result' && allTeams.length > 0) {
                     const allReady = allTeams.every(t => gameState.readyTeams?.includes(t.id));
                     if (allReady && gameState.round < 5) {
@@ -210,9 +217,9 @@
                         setTimeLeft(remaining);
 
                         if (role === 'admin') {
-                            // 투자 페이즈 요일 전환 로직
                             if (gameState.phase === 'investment') {
-                                const dayIdx = Math.min(6, Math.floor(elapsed / DAY_TIME_LIMIT));
+                                // 1분 단위 요일 인덱스 계산
+                                const dayIdx = Math.min(6, Math.floor(elapsed / 60));
                                 if (gameState.currentDayIdx !== dayIdx) {
                                     fb.updateDoc(fb.doc(fb.getFirestore(), 'investment_game', 'state', 'public', gameDocId), {
                                         currentDayIdx: dayIdx,
@@ -223,7 +230,6 @@
                                     fb.updateDoc(fb.doc(fb.getFirestore(), 'investment_game', 'state', 'public', gameDocId), { phase: 'result' });
                                 }
                             }
-                            // 암호 라운드 타임아웃
                             if (gameState.phase === 'password' && remaining <= 0) {
                                 fb.updateDoc(fb.doc(fb.getFirestore(), 'investment_game', 'state', 'public', gameDocId), { phase: 'round_result', readyTeams: [] });
                             }
@@ -247,8 +253,7 @@
                     for (let i = 1; i <= 7; i++) {
                         const next = {};
                         ASSETS.forEach(a => {
-                            const change = (Math.floor(Math.random() * 20) + 1) * 1000;
-                            next[a.id] = Math.max(1000, curr[a.id] + (Math.random() > 0.5 ? 1 : -1) * change);
+                            next[a.id] = generateNormalPrice();
                         });
                         history.push(next);
                         curr = next;
@@ -269,7 +274,7 @@
                     phase: 'investment',
                     currentDayIdx: 0,
                     timerStart: Date.now(),
-                    timerDuration: DAY_TIME_LIMIT * 7, // 7일 전체 타이머
+                    timerDuration: DAY_TIME_LIMIT * 7,
                     currentPrices: firstPrices
                 });
             };
@@ -328,7 +333,7 @@
             if (loading) return <div className="h-screen flex items-center justify-center font-bold text-slate-500 animate-pulse">SYSTEM INITIALIZING...</div>;
 
             if (!role) return (
-                <div className="h-screen flex items-center justify-center p-4 bg-slate-950">
+                <div className="h-screen flex items-center justify-center p-4">
                     <div className="max-w-sm w-full bg-slate-900 p-8 rounded-3xl border border-slate-800 shadow-2xl fade-in text-center">
                         <h1 className="text-2xl font-black bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent uppercase mb-8 leading-tight">연립방정식<br/>투자 경연대회</h1>
                         <button onClick={() => setShowAdminLogin(true)} className="w-full bg-slate-800 py-4 rounded-2xl font-bold mb-4 flex items-center justify-center gap-2 border border-slate-700 hover:bg-slate-700 transition-all"><SafeIcon name="Lock" /> 관리자 접속</button>
@@ -348,7 +353,7 @@
             );
 
             return (
-                <div className="min-h-screen flex flex-col bg-slate-950">
+                <div className="min-h-screen flex flex-col">
                     <header className="bg-slate-900/80 backdrop-blur-md border-b border-slate-800 p-4 sticky top-0 z-50 flex justify-between items-center">
                         <div className="flex items-center gap-3">
                             <div className="bg-blue-600 p-2 rounded-xl"><SafeIcon name="Coins" size={20}/></div>
@@ -359,7 +364,9 @@
                         </div>
                         {gameState?.timerStart && (
                             <div className="bg-slate-950 px-4 py-2 rounded-2xl font-mono text-xl border border-slate-800 text-blue-400 flex items-center gap-2">
-                                <SafeIcon name="Timer" size={18} className="animate-pulse" /> {formatTime(timeLeft)}
+                                <span className="text-xs text-slate-500 font-sans mr-1">{gameState.phase === 'investment' ? DAYS[gameState.currentDayIdx] : ''}</span>
+                                <SafeIcon name="Timer" size={18} className="animate-pulse" /> 
+                                {gameState.phase === 'investment' ? formatTime(timeLeft % 60) : formatTime(timeLeft)}
                             </div>
                         )}
                     </header>
@@ -367,30 +374,26 @@
                     <main className="flex-1 p-4 max-w-5xl mx-auto w-full fade-in">
                         {role === 'admin' ? (
                             <div className="space-y-6">
-                                <section className="bg-slate-900 p-6 rounded-3xl border border-slate-800 shadow-xl">
+                                <section className="bg-slate-900 p-6 rounded-3xl border border-slate-800">
                                     <h3 className="text-xs font-bold text-blue-400 mb-6 uppercase tracking-widest">Game Management</h3>
                                     <div className="grid grid-cols-2 gap-4">
-                                        <button 
-                                            onClick={startNextRound} 
-                                            disabled={gameState?.round >= 5}
-                                            className="bg-blue-600 py-4 rounded-2xl font-bold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                                        >
+                                        <button onClick={startNextRound} disabled={gameState?.round >= 5} className="bg-blue-600 py-4 rounded-2xl font-bold shadow-lg disabled:opacity-50">
                                             {gameState?.round >= 5 ? "미션 종료" : `미션 ${(gameState?.round || 0) + 1} 시작`}
                                         </button>
                                         <button onClick={startInvestment} className="bg-emerald-600 py-4 rounded-2xl font-bold shadow-lg">투자 시작</button>
                                     </div>
-                                    <button onClick={resetGame} className="mt-4 text-[10px] text-rose-500 font-black uppercase tracking-widest w-full text-right hover:text-rose-400">System Reset</button>
+                                    <button onClick={resetGame} className="mt-4 text-[10px] text-rose-500 font-black uppercase tracking-widest w-full text-right">System Reset</button>
                                 </section>
-                                <div className="grid grid-cols-2 gap-6">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <div className="bg-slate-900 p-6 rounded-3xl border border-slate-800">
                                         <h3 className="text-xs font-bold text-yellow-500 mb-4 uppercase">Live Ranking</h3>
                                         {[...allTeams].sort((a,b) => {
-                                            const getWorth = (t) => (t.budget || 0) + ASSETS.reduce((acc, ast) => acc + (t.portfolio?.[ast.id] || 0) * (gameState?.currentPrices?.[ast.id] || 0), 0);
+                                            const getWorth = (t) => (t.budget || 0) + ASSETS.reduce((acc, ast) => acc + (t.portfolio?.[ast.id] || 0) * (gameState?.currentPrices?.[ast.id] || 10000), 0);
                                             return getWorth(b) - getWorth(a);
                                         }).map((t, i) => (
                                             <div key={t.id} className="flex justify-between p-3 bg-slate-800/40 rounded-xl mb-2 border border-slate-800 text-sm">
                                                 <span>{i+1}. {t.teamName}</span>
-                                                <span className="text-emerald-400 font-mono">{( (t.budget || 0) + ASSETS.reduce((acc, ast) => acc + (t.portfolio?.[ast.id] || 0) * (gameState?.currentPrices?.[ast.id] || 0), 0) ).toLocaleString()}원</span>
+                                                <span className="text-emerald-400 font-mono">{( (t.budget || 0) + ASSETS.reduce((acc, ast) => acc + (t.portfolio?.[ast.id] || 0) * (gameState?.currentPrices?.[ast.id] || 10000), 0) ).toLocaleString()}원</span>
                                             </div>
                                         ))}
                                     </div>
@@ -422,8 +425,8 @@
         function TeamUI({ gameState, role, myTeamData, allTeams, submitPassword, trade, timeLeft, fb }) {
             const [input, setInput] = useState(['','','','','','']);
             const [isBlackout, setIsBlackout] = useState(false);
+            const [selectedHint, setSelectedHint] = useState(null);
 
-            // 요일 바뀔 때 암전 효과
             useEffect(() => {
                 if (gameState?.phase === 'investment') {
                     setIsBlackout(true);
@@ -444,25 +447,43 @@
                 );
             }
 
-            // 투자 화면 (우선순위 높임)
             if (gameState.phase === 'investment' || gameState.phase === 'result') {
                 const currentPrices = gameState.currentPrices || { flour: 10000, oil: 10000, wood: 10000, coke: 10000 };
-                const totalInvested = ASSETS.reduce((acc, a) => acc + (myTeamData?.portfolio?.[a.id] || 0) * (currentPrices[a.id] || 0), 0);
-                const worth = (myTeamData?.budget || 0) + totalInvested;
+                const worth = (myTeamData?.budget || 0) + ASSETS.reduce((acc, a) => acc + (myTeamData?.portfolio?.[a.id] || 0) * (currentPrices[a.id] || 0), 0);
                 const sorted = [...allTeams].sort((a,b) => {
-                    const getW = (t) => (t.budget || 0) + ASSETS.reduce((acc, ast) => acc + (t.portfolio?.[ast.id] || 0) * (currentPrices[ast.id] || 0), 0);
+                    const getW = (t) => (t.budget || 0) + ASSETS.reduce((acc, ast) => acc + (t.portfolio?.[ast.id] || 0) * (currentPrices[ast.id] || 10000), 0);
                     return getW(b) - getW(a);
                 });
                 const isWinner = gameState.phase === 'result' && sorted[0]?.id === role;
+
+                const aHints = myTeamData?.hints?.filter(h => h.type === 'A') || [];
+                const bHints = myTeamData?.hints?.filter(h => h.type === 'B') || [];
 
                 return (
                     <div className="relative">
                         <div className={`blackout-overlay ${isBlackout ? 'active' : ''}`}>
                             <div className="text-center">
                                 <h1 className="text-4xl font-black text-white mb-2">{DAYS[gameState.currentDayIdx]}이 되었습니다</h1>
-                                <p className="text-blue-400 font-bold tracking-widest animate-pulse">상황을 분석하고 투자하세요...</p>
+                                <p className="text-blue-400 font-bold tracking-widest animate-pulse">시장을 분석하십시오...</p>
                             </div>
                         </div>
+
+                        {}
+                        {selectedHint && (
+                            <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[200] flex items-center justify-center p-6" onClick={() => setSelectedHint(null)}>
+                                <div className="bg-slate-900 border-2 border-amber-500 p-8 rounded-3xl max-w-sm w-full shadow-[0_0_50px_rgba(245,158,11,0.3)] fade-in" onClick={e => e.stopPropagation()}>
+                                    <div className="flex justify-between items-center mb-6">
+                                        <h4 className="font-black text-amber-500 text-xl uppercase italic">Intelligence Report</h4>
+                                        <button onClick={() => setSelectedHint(null)} className="text-slate-500 hover:text-white"><X size={24}/></button>
+                                    </div>
+                                    <div className="bg-slate-950 p-6 rounded-2xl border border-slate-800 text-center">
+                                        <p className="text-xs text-slate-500 mb-4 font-bold uppercase tracking-widest">{selectedHint.targetDay} 정보</p>
+                                        <p className="text-lg font-bold text-slate-100 leading-relaxed whitespace-pre-line">{selectedHint.text}</p>
+                                    </div>
+                                    <button onClick={() => setSelectedHint(null)} className="w-full mt-8 bg-amber-600 py-4 rounded-xl font-bold">확인 완료</button>
+                                </div>
+                            </div>
+                        )}
 
                         <div className={`grid grid-cols-1 lg:grid-cols-3 gap-6 fade-in ${isWinner ? 'glow-gold p-4 rounded-[3rem]' : ''}`}>
                             <div className="lg:col-span-2 space-y-6">
@@ -487,25 +508,24 @@
                                         ))}
                                     </div>
                                 </div>
-                                <div className="bg-slate-900 p-6 rounded-[2rem] border border-slate-800">
-                                    <h3 className="text-[10px] font-bold text-amber-500 mb-4 uppercase">Hints & Strategy</h3>
-                                    <div className="space-y-2">
-                                        {myTeamData?.hints?.map((h, i) => (
-                                            <div key={i} className={`p-4 rounded-xl border text-sm ${h.used ? 'opacity-40 bg-slate-950' : 'bg-slate-800 border-slate-700'}`}>
-                                                <div className="flex justify-between items-center mb-1">
-                                                    <span className="text-[8px] font-black bg-amber-500 text-black px-2 py-0.5 rounded-full">{h.type} CLASS</span>
-                                                    {!h.used && <button onClick={async () => {
-                                                        const newHints = [...myTeamData.hints];
-                                                        newHints[i].used = true;
-                                                        await fb.updateDoc(fb.doc(fb.getFirestore(), 'investment_game', 'teams', 'entries', role), { hints: newHints });
-                                                    }} className="text-xs text-amber-500 font-bold">확인</button>}
-                                                </div>
-                                                <p>{h.used ? `${h.targetDay} 정보: ${h.text}` : "다음 요일 정보를 보려면 확인을 누르세요."}</p>
-                                            </div>
-                                        ))}
+
+                                {}
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="hint-card hint-card-a p-6 rounded-2xl shadow-xl flex flex-col items-center text-center text-white" 
+                                         onClick={() => aHints.length > 0 && setSelectedHint(aHints[aHints.length-1])}>
+                                        <div className="bg-white/20 p-3 rounded-xl mb-3"><Trophy size={24}/></div>
+                                        <h4 className="font-black text-sm uppercase mb-1">A급 힌트</h4>
+                                        <p className="text-[10px] opacity-80">{aHints.length}개 보유 중</p>
+                                    </div>
+                                    <div className="hint-card hint-card-b p-6 rounded-2xl shadow-xl flex flex-col items-center text-center text-white"
+                                         onClick={() => bHints.length > 0 && setSelectedHint(bHints[bHints.length-1])}>
+                                        <div className="bg-white/20 p-3 rounded-xl mb-3"><FileText size={24}/></div>
+                                        <h4 className="font-black text-sm uppercase mb-1">B급 힌트</h4>
+                                        <p className="text-[10px] opacity-80">{bHints.length}개 보유 중</p>
                                     </div>
                                 </div>
                             </div>
+
                             <div className="space-y-6">
                                 <div className="bg-slate-900 p-8 rounded-[2rem] border border-slate-800 shadow-2xl">
                                     <p className="text-[10px] text-slate-500 uppercase font-black mb-2">Total Assets</p>
@@ -516,6 +536,11 @@
                                     </div>
                                     {isWinner && <div className="mt-6 p-4 bg-yellow-500/20 border border-yellow-500/30 rounded-2xl text-center text-yellow-500 font-black animate-bounce">🎉 최종 우승! 축하합니다! 🎉</div>}
                                 </div>
+                                {gameState.phase === 'result' && !isWinner && (
+                                    <div className="bg-slate-900/50 p-6 rounded-2xl border border-slate-800 text-center">
+                                        <p className="text-slate-500 font-bold uppercase text-xs">최종 순위: {sorted.findIndex(t => t.id === role) + 1}위</p>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -552,7 +577,7 @@
                                             </div>
                                         ))}
                                     </div>
-                                    <button onClick={() => submitPassword(input)} className="w-full bg-blue-600 py-4 rounded-2xl font-bold shadow-xl">해독 정보 전송</button>
+                                    <button onClick={() => submitPassword(input)} className="w-full bg-blue-600 py-4 rounded-2xl font-bold">해독 정보 전송</button>
                                 </div>
                             ) : <div className="p-10 bg-blue-600/10 border border-blue-500/30 rounded-3xl text-center text-blue-400 font-black">해독 완료. 다른 팀을 기다리는 중...</div>}
                         </div>
@@ -570,17 +595,14 @@
                                 <SafeIcon name={correct ? "Unlock" : "Lock"} size={40} />
                             </div>
                             <h3 className="text-2xl font-black mb-6 uppercase">{correct ? "Success" : "Failure"}</h3>
-                            <p className="bg-slate-950 p-6 rounded-2xl border border-slate-800 text-sm mb-8 font-bold leading-relaxed">
+                            <p className="bg-slate-950 p-6 rounded-2xl border border-slate-800 text-sm mb-8 font-bold">
                                 {correct ? "A급 힌트를 하나 획득하셨습니다." : "B급 힌트를 하나 획득하셨습니다."}
                             </p>
                             {!ready ? (
-                                <button 
-                                    onClick={() => fb.updateDoc(fb.doc(fb.getFirestore(), 'investment_game', 'state', 'public', gameDocId), { readyTeams: fb.arrayUnion(role) })} 
-                                    className="w-full bg-blue-600 py-4 rounded-2xl font-bold"
-                                >
+                                <button onClick={() => fb.updateDoc(fb.doc(fb.getFirestore(), 'investment_game', 'state', 'public', gameDocId), { readyTeams: fb.arrayUnion(role) })} className="w-full bg-blue-600 py-4 rounded-2xl font-bold">
                                     {gameState.round === 5 ? "투자 경연대회 참가" : "다음 라운드 준비"}
                                 </button>
-                            ) : <div className="text-emerald-500 font-black animate-pulse">{gameState.round === 5 ? "투자 시작을 기다리는 중..." : "대기 중..."}</div>}
+                            ) : <div className="text-emerald-500 font-black animate-pulse">대기 중...</div>}
                         </div>
                     </div>
                 );
