@@ -21,6 +21,7 @@
         .fade-in { animation: fadeIn 0.5s ease-out forwards; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .glow-gold { box-shadow: 0 0 20px rgba(234, 179, 8, 0.5); border: 4px solid #eab308 !important; }
+        .blackout { background-color: #000; transition: opacity 0.5s ease; }
     </style>
 </head>
 <body class="bg-slate-950 text-slate-100 antialiased overflow-x-hidden">
@@ -45,6 +46,27 @@
             Coins, Package, Info, Play, RefreshCw, Trophy, AlertCircle, ExternalLink, X, ChevronRight
         } = window.LucideReact || {};
 
+        const firebaseConfig = {
+            apiKey: "AIzaSyCB96k3FfAx7qWh7RUuvp00m3FnbHrdDN8",
+            authDomain: "duru10301.firebaseapp.com",
+            projectId: "duru10301",
+            storageBucket: "duru10301.firebasestorage.app",
+            messagingSenderId: "870062414256",
+            appId: "1:870062414256:web:a965fc9674c63367f21e75",
+        };
+
+        const gameDocId = "global_game_session"; 
+        const ADMIN_PASSWORD = "123123";
+        const PW_TIME_LIMIT = 100;
+        const DAY_TIME_LIMIT = 60;
+        const ASSETS = [
+            { id: 'flour', name: '밀가루', icon: '🍞' },
+            { id: 'oil', name: '석유', icon: '🛢️' },
+            { id: 'wood', name: '목재', icon: '🪵' },
+            { id: 'coke', name: '콜라', icon: '🥤' }
+        ];
+        const DAYS = ["월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일"];
+
         const formatTerm = (coeff, varName, isFirst = false) => {
             if (coeff === 0) return "";
             let str = "";
@@ -53,7 +75,7 @@
             else str = coeff + varName;
             
             if (!isFirst && coeff > 0) return " + " + str;
-            if (!isFirst && coeff < 0) return " - " + str.substring(1); // Replace +- with -
+            if (!isFirst && coeff < 0) return " - " + str.substring(1);
             return str;
         };
 
@@ -63,7 +85,6 @@
 
             if (difficulty === 'green') {
                 const b = Math.random() > 0.5 ? 1 : -1;
-                // x + y = c, x - y = d (계수 1 생략 적용)
                 const c1 = x + b * y;
                 const c2 = x - b * y;
                 const eq1 = `${formatTerm(1, 'x', true)}${formatTerm(b, 'y')} = ${c1}`;
@@ -75,10 +96,9 @@
                 const c1 = a * x + b * y;
                 let a2 = Math.floor(Math.random() * 2) + 2;
                 while(a2 === a) a2++;
-                const b2 = 1; // y의 계수가 1인 경우
-                const c2 = a2 * x + b2 * y;
+                const c2 = a2 * x + 1 * y;
                 const eq1 = `${formatTerm(a, 'x', true)}${formatTerm(b, 'y')} = ${c1}`;
-                const eq2 = `${formatTerm(a2, 'x', true)}${formatTerm(b2, 'y')} = ${c2}`;
+                const eq2 = `${formatTerm(a2, 'x', true)}${formatTerm(1, 'y')} = ${c2}`;
                 return { eqs: [eq1, eq2], answer: [x, y] };
             } else {
                 const p = Math.floor(Math.random() * 5) + 1;
@@ -98,33 +118,14 @@
             return `${m}:${s < 10 ? '0' : ''}${s}`;
         };
 
+        const SafeIcon = ({ name, size = 18, className = "" }) => {
+            const IconComp = window.LucideReact ? window.LucideReact[name] : null;
+            if (!IconComp) return null;
+            return <IconComp size={size} className={className} />;
+        };
+
         function App() {
-            // ... existing state ...
-
-            useEffect(() => {
-                if (!fb || role !== 'admin') return;
-                const db = fb.getFirestore();
-
-                // 1. 모든 조가 정답 입력 완료 시 결과창으로 자동 전환
-                if (gameState?.phase === 'password' && allTeams.length > 0) {
-                    const allSolved = allTeams.every(t => t.solvedRounds?.includes(gameState.round));
-                    if (allSolved) {
-                        fb.updateDoc(fb.doc(db, 'investment_game', 'state', 'public', gameDocId), { 
-                            phase: 'round_result', 
-                            readyTeams: [] 
-                        });
-                    }
-                }
-
-                // 2. 모든 조가 다음 라운드 준비 완료 시 자동 다음 미션 시작
-                if (gameState?.phase === 'round_result' && allTeams.length > 0) {
-                    const allReady = allTeams.every(t => gameState.readyTeams?.includes(t.id));
-                    if (allReady) {
-                        startNextRound();
-                    }
-                }
-            }, [allTeams, gameState, fb, role]);
-
+            const [fb, setFb] = useState(null);
             const [role, setRole] = useState(null); 
             const [gameState, setGameState] = useState(null);
             const [myTeamData, setMyTeamData] = useState(null);
@@ -169,6 +170,26 @@
                     setMyTeamData(allTeams.find(t => t.id === role));
                 }
             }, [allTeams, role]);
+
+            useEffect(() => {
+                if (!fb || role !== 'admin' || !gameState) return;
+                const db = fb.getFirestore();
+
+                if (gameState.phase === 'password' && allTeams.length > 0) {
+                    const allSolved = allTeams.every(t => t.solvedRounds?.includes(gameState.round));
+                    if (allSolved) {
+                        fb.updateDoc(fb.doc(db, 'investment_game', 'state', 'public', gameDocId), { 
+                            phase: 'round_result', 
+                            readyTeams: [] 
+                        });
+                    }
+                }
+
+                if (gameState.phase === 'round_result' && allTeams.length > 0) {
+                    const allReady = allTeams.every(t => gameState.readyTeams?.includes(t.id));
+                    if (allReady) startNextRound();
+                }
+            }, [allTeams, gameState, fb, role]);
 
             useEffect(() => {
                 const tick = setInterval(() => {
@@ -278,11 +299,11 @@
 
             if (!role) return (
                 <div className="h-screen flex items-center justify-center p-4 bg-slate-950">
-                    <div className="max-w-sm w-full bg-slate-900 p-8 rounded-3xl border border-slate-800 shadow-2xl fade-in">
-                        <h1 className="text-2xl font-black text-center bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent uppercase mb-8">연립방정식<br/>투자 경연대회</h1>
-                        <button onClick={() => setShowAdminLogin(true)} className="w-full bg-slate-800 py-4 rounded-2xl font-bold mb-4 flex items-center justify-center gap-2 border border-slate-700"><SafeIcon name="Lock" /> 관리자 접속</button>
+                    <div className="max-w-sm w-full bg-slate-900 p-8 rounded-3xl border border-slate-800 shadow-2xl fade-in text-center">
+                        <h1 className="text-2xl font-black bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent uppercase mb-8 leading-tight">연립방정식<br/>투자 경연대회</h1>
+                        <button onClick={() => setShowAdminLogin(true)} className="w-full bg-slate-800 py-4 rounded-2xl font-bold mb-4 flex items-center justify-center gap-2 border border-slate-700 hover:bg-slate-700 transition-all"><SafeIcon name="Lock" /> 관리자 접속</button>
                         <div className="grid grid-cols-2 gap-2">
-                            {[1,2,3,4,5,6,7,8,9,10].map(n => <button key={n} onClick={() => joinTeam(n)} className="bg-slate-800 py-3 rounded-xl border border-slate-700 font-bold hover:bg-blue-600 transition-colors">{n}조 참가</button>)}
+                            {[1,2,3,4,5,6,7,8,9,10].map(n => <button key={n} onClick={() => joinTeam(n)} className="bg-slate-800 py-3 rounded-xl border border-slate-700 font-bold hover:bg-blue-600 transition-all">{n}조 참가</button>)}
                         </div>
                     </div>
                     {showAdminLogin && (
@@ -362,7 +383,6 @@
         function TeamUI({ gameState, role, myTeamData, submitPassword, trade, timeLeft, fb }) {
             const [input, setInput] = useState(['','','','','','']);
 
-            // ** 수정한 부분: 대기실(lobby) 상태일 때 화면 렌더링 **
             if (!gameState || gameState.phase === 'lobby') {
                 return (
                     <div className="h-full py-20 flex flex-col items-center gap-6 text-center fade-in">
@@ -370,9 +390,7 @@
                             <SafeIcon name="RefreshCw" size={64} className="animate-spin-slow text-blue-500" />
                         </div>
                         <h2 className="text-2xl font-black uppercase tracking-tighter">참가 완료</h2>
-                        <p className="text-slate-500 text-sm max-w-[200px] leading-relaxed">
-                            관리자가 게임 세션을 시작할 때까지 잠시 대기해 주세요.
-                        </p>
+                        <p className="text-slate-500 text-sm max-w-[200px] leading-relaxed">관리자가 미션을 시작할 때까지 대기해 주세요.</p>
                     </div>
                 );
             }
@@ -385,7 +403,7 @@
                             <div className="flex justify-between mb-8 items-start">
                                 <div>
                                     <span className="bg-blue-600 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase mb-2 inline-block">ROUND {gameState.round}</span>
-                                    <h3 className="text-2xl font-black uppercase tracking-tighter">정보 해킹 미션</h3>
+                                    <h3 className="text-2xl font-black uppercase tracking-tighter">정보 해독 미션</h3>
                                 </div>
                                 <div className="text-blue-400 font-mono text-2xl animate-pulse">{formatTime(timeLeft)}</div>
                             </div>
@@ -409,7 +427,7 @@
                                     </div>
                                     <button onClick={() => submitPassword(input)} className="w-full bg-blue-600 py-4 rounded-2xl font-bold shadow-xl">해독 정보 전송</button>
                                 </div>
-                            ) : <div className="p-10 bg-blue-600/10 border border-blue-500/30 rounded-3xl text-center text-blue-400 font-black">데이터 업로드 완료. 다른 팀을 기다리는 중...</div>}
+                            ) : <div className="p-10 bg-blue-600/10 border border-blue-500/30 rounded-3xl text-center text-blue-400 font-black">해독 완료. 다른 팀을 기다리는 중...</div>}
                         </div>
                     </div>
                 );
@@ -425,7 +443,7 @@
                                 <SafeIcon name={correct ? "Unlock" : "Lock"} size={40} />
                             </div>
                             <h3 className="text-2xl font-black mb-6 uppercase">{correct ? "Success" : "Failure"}</h3>
-                            <p className="bg-slate-950 p-6 rounded-2xl border border-slate-800 text-sm mb-8 font-bold">
+                            <p className="bg-slate-950 p-6 rounded-2xl border border-slate-800 text-sm mb-8 font-bold leading-relaxed">
                                 {correct ? "A급 힌트를 하나 획득하셨습니다." : "B급 힌트를 하나 획득하셨습니다."}
                             </p>
                             {!ready ? (
@@ -437,8 +455,13 @@
             }
 
             if (gameState.phase === 'investment' || gameState.phase === 'result') {
-                const worth = (myTeamData?.budget || 0) + ASSETS.reduce((acc, a) => acc + (myTeamData?.portfolio?.[a.id] || 0) * (gameState.currentPrices?.[a.id] || 0), 0);
-                const sorted = [...allTeams].sort((a,b) => (b.budget || 0) - (a.budget || 0));
+                const totalInvested = ASSETS.reduce((acc, a) => acc + (myTeamData?.portfolio?.[a.id] || 0) * (gameState.currentPrices?.[a.id] || 0), 0);
+                const worth = (myTeamData?.budget || 0) + totalInvested;
+                const sorted = [...allTeams].sort((a,b) => {
+                    const aWorth = (a.budget || 0) + ASSETS.reduce((acc, ast) => acc + (a.portfolio?.[ast.id] || 0) * (gameState.currentPrices?.[ast.id] || 0), 0);
+                    const bWorth = (b.budget || 0) + ASSETS.reduce((acc, ast) => acc + (b.portfolio?.[ast.id] || 0) * (gameState.currentPrices?.[ast.id] || 0), 0);
+                    return bWorth - aWorth;
+                });
                 const isWinner = gameState.phase === 'result' && sorted[0]?.id === role;
 
                 return (
@@ -446,7 +469,7 @@
                         <div className="lg:col-span-2 space-y-6">
                             <div className="bg-slate-900 p-6 rounded-[2rem] border border-slate-800 shadow-xl overflow-hidden relative">
                                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-emerald-500"></div>
-                                <h3 className="font-bold text-emerald-400 mb-6 uppercase text-[10px] tracking-widest flex items-center gap-2"><TrendingUp size={14}/> {DAYS[gameState.currentDayIdx]} Market</h3>
+                                <h3 className="font-bold text-emerald-400 mb-6 uppercase text-[10px] tracking-widest flex items-center gap-2"><SafeIcon name="TrendingUp" size={14}/> {DAYS[gameState.currentDayIdx % 7]} Market</h3>
                                 <div className="grid grid-cols-2 gap-4">
                                     {ASSETS.map(a => (
                                         <div key={a.id} className="bg-slate-800/40 p-4 rounded-2xl border border-slate-800/60">
@@ -478,7 +501,7 @@
                                                     await fb.updateDoc(fb.doc(fb.getFirestore(), 'investment_game', 'teams', 'entries', role), { hints: newHints });
                                                 }} className="text-xs text-amber-500 font-bold">확인</button>}
                                             </div>
-                                            <p>{h.used ? `${h.targetDay} 정보: ${h.text}` : "다음 요일의 가격 정보를 보려면 확인을 누르세요."}</p>
+                                            <p>{h.used ? `${h.targetDay} 정보: ${h.text}` : "다음 요일 정보를 보려면 확인을 누르세요."}</p>
                                         </div>
                                     ))}
                                 </div>
@@ -492,7 +515,7 @@
                                     <p className="text-[10px] text-slate-500 uppercase font-black mb-1">Cash</p>
                                     <p className="text-2xl font-mono font-black text-emerald-400">{(myTeamData?.budget || 0).toLocaleString()}원</p>
                                 </div>
-                                {isWinner && <div className="mt-6 p-4 bg-yellow-500/20 border border-yellow-500/30 rounded-2xl text-center text-yellow-500 font-black">🎉 최종 우승! 축하합니다! 🎉</div>}
+                                {isWinner && <div className="mt-6 p-4 bg-yellow-500/20 border border-yellow-500/30 rounded-2xl text-center text-yellow-500 font-black animate-bounce">🎉 최종 우승! 축하합니다! 🎉</div>}
                             </div>
                         </div>
                     </div>
@@ -501,7 +524,8 @@
             return null;
         }
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
+        const container = document.getElementById('root');
+        const root = ReactDOM.createRoot(container);
         root.render(<App />);
     })();
     </script>
