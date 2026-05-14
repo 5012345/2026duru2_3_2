@@ -320,13 +320,13 @@
                 });
             };
 
-            if (loading) return <div className="h-screen flex items-center justify-center font-bold text-slate-500 animate-pulse">SYSTEM INITIALIZING...</div>;
+            if (loading) return <div className="h-screen flex items-center justify-center font-bold text-slate-500 animate-pulse uppercase tracking-widest">System Initializing...</div>;
 
             if (!role) return (
                 <div className="h-screen flex items-center justify-center p-4">
                     <div className="max-w-sm w-full bg-slate-900 p-8 rounded-3xl border border-slate-800 shadow-2xl fade-in text-center">
                         <h1 className="text-2xl font-black bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent uppercase mb-8 leading-tight">연립방정식<br/>투자 경연대회</h1>
-                        <button onClick={() => setShowAdminLogin(true)} className="w-full bg-slate-800 py-4 rounded-2xl font-bold mb-4 flex items-center justify-center gap-2 border border-slate-700 hover:bg-slate-700 transition-all"><SafeIcon name="Lock" /> 관리자 접속</button>
+                        <button onClick={() => setShowAdminLogin(true)} className="w-full bg-slate-800 py-4 rounded-2xl font-bold mb-4 flex items-center justify-center gap-2 border border-slate-700 hover:bg-slate-700 transition-all"><Lock size={18}/> 관리자 접속</button>
                         <div className="grid grid-cols-2 gap-2">
                             {[1,2,3,4,5,6,7,8,9,10].map(n => <button key={n} onClick={() => joinTeam(n)} className="bg-slate-800 py-3 rounded-xl border border-slate-700 font-bold hover:bg-blue-600 transition-all">{n}조 참가</button>)}
                         </div>
@@ -346,7 +346,7 @@
                 <div className="min-h-screen flex flex-col">
                     <header className="bg-slate-900/80 backdrop-blur-md border-b border-slate-800 p-4 sticky top-0 z-50 flex justify-between items-center">
                         <div className="flex items-center gap-3">
-                            <div className="bg-blue-600 p-2 rounded-xl"><SafeIcon name="Coins" size={20}/></div>
+                            <div className="bg-blue-600 p-2 rounded-xl"><Coins size={20}/></div>
                             <div>
                                 <h2 className="font-bold text-sm">연립방정식 투자 경연대회</h2>
                                 <p className="text-[10px] text-blue-500 font-bold uppercase">{role === 'admin' ? '관리자' : myTeamData?.teamName}</p>
@@ -355,7 +355,7 @@
                         {gameState?.timerStart && (
                             <div className="bg-slate-950 px-4 py-2 rounded-2xl font-mono text-xl border border-slate-800 text-blue-400 flex items-center gap-2">
                                 <span className="text-xs text-slate-500 font-sans mr-1">{gameState.phase === 'investment' ? DAYS[gameState.currentDayIdx] : ''}</span>
-                                <SafeIcon name="Timer" size={18} className="animate-pulse" /> 
+                                <Timer size={18} className="animate-pulse" /> 
                                 {gameState.phase === 'investment' ? formatTime(timeLeft % 60) : formatTime(timeLeft)}
                             </div>
                         )}
@@ -379,36 +379,33 @@
         }
 
         function AdminUI({ gameState, allTeams, startNextRound, startInvestment, resetGame, fb }) {
-            if (!gameState) return <div className="text-center p-20 text-slate-500">데이터를 불러오는 중...</div>;
-
-            const currentPrices = gameState.currentPrices || (gameState.priceHistory?.[gameState.currentDayIdx || 0]) || { flour: 10000, oil: 10000, wood: 10000, coke: 10000 };
+            if (!gameState) return <div className="text-center p-20 text-slate-500">데이터 로딩 중...</div>;
+            const currentPrices = gameState.currentPrices || { flour: 10000, oil: 10000, wood: 10000, coke: 10000 };
             
             return (
                 <div className="space-y-6">
                     <section className="bg-slate-900 p-6 rounded-3xl border border-slate-800 shadow-xl">
                         <div className="flex justify-between items-center mb-6">
                             <h3 className="text-xs font-bold text-blue-400 uppercase tracking-widest">게임 관리</h3>
-                            {gameState?.phase === 'investment' && <span className="text-emerald-400 font-bold text-sm animate-pulse">실시간 시장 활성화 - {DAYS[gameState.currentDayIdx]}</span>}
+                            {gameState?.phase === 'investment' && <span className="text-emerald-400 font-bold text-sm animate-pulse">실시간 시장 운영 중 - {DAYS[gameState.currentDayIdx]}</span>}
                         </div>
                         <div className="grid grid-cols-2 gap-4">
-                            <button onClick={startNextRound} disabled={gameState?.round >= 5} className="bg-blue-600 py-4 rounded-2xl font-bold shadow-lg disabled:opacity-50 hover:bg-blue-500 transition-colors">
-                                {gameState?.round >= 5 ? "미션 종료" : `미션 ${(gameState?.round || 0) + 1} 시작`}
+                            <button onClick={startNextRound} disabled={gameState?.round >= 5} className="bg-blue-600 py-4 rounded-2xl font-bold shadow-lg disabled:opacity-50">
+                                {gameState?.round >= 5 ? "미션 완료" : `미션 ${(gameState?.round || 0) + 1} 시작`}
                             </button>
-                            <button onClick={startInvestment} disabled={gameState?.phase === 'investment'} className="bg-emerald-600 py-4 rounded-2xl font-bold shadow-lg hover:bg-emerald-500 transition-colors disabled:opacity-50">투자 경연 시작</button>
+                            <button onClick={startInvestment} disabled={gameState?.phase === 'investment'} className="bg-emerald-600 py-4 rounded-2xl font-bold shadow-lg disabled:opacity-50">투자 경연 시작</button>
                         </div>
-                        <button onClick={resetGame} className="mt-4 text-[10px] text-rose-500 font-black uppercase tracking-widest w-full text-right hover:text-rose-400">전체 초기화</button>
+                        <button onClick={resetGame} className="mt-4 text-[10px] text-rose-500 font-black uppercase tracking-widest w-full text-right hover:text-rose-400 transition-colors">시스템 전체 초기화</button>
                     </section>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="bg-slate-900 p-6 rounded-3xl border border-slate-800 shadow-xl">
-                            <h3 className="text-xs font-bold text-blue-400 mb-4 uppercase flex items-center gap-2">
-                                <SafeIcon name="Package" size={14}/> 시장 시세 정보
-                            </h3>
+                            <h3 className="text-xs font-bold text-blue-400 mb-4 uppercase flex items-center gap-2"><Package size={14}/> 실시간 시장 시세</h3>
                             <div className="grid grid-cols-2 gap-3">
                                 {ASSETS.map(a => (
                                     <div key={a.id} className="bg-slate-800/60 p-4 rounded-2xl border border-slate-700/50 flex flex-col items-center">
                                         <div className="text-3xl mb-1">{a.icon}</div>
-                                        <div className="text-[10px] text-slate-400 font-bold mb-1">{a.name}</div>
+                                        <div className="text-[10px] text-slate-400 font-bold mb-1 uppercase">{a.name}</div>
                                         <div className="text-xl font-black font-mono text-white">{(currentPrices[a.id] || 0).toLocaleString()}원</div>
                                     </div>
                                 ))}
@@ -416,10 +413,8 @@
                         </div>
 
                         <div className="bg-slate-900 p-6 rounded-3xl border border-slate-800 shadow-xl">
-                            <h3 className="text-xs font-bold text-yellow-500 mb-4 uppercase flex items-center gap-2">
-                                <SafeIcon name="Trophy" size={14}/> 팀별 순위 현황
-                            </h3>
-                            <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
+                            <h3 className="text-xs font-bold text-yellow-500 mb-4 uppercase flex items-center gap-2"><Trophy size={14}/> 조별 자산 현황</h3>
+                            <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
                                 {[...allTeams].sort((a,b) => {
                                     const getWorth = (t) => (t.budget || 0) + ASSETS.reduce((acc, ast) => acc + (t.portfolio?.[ast.id] || 0) * (currentPrices[ast.id] || 10000), 0);
                                     return getWorth(b) - getWorth(a);
@@ -429,7 +424,7 @@
                                         <span className="text-emerald-400 font-mono font-bold">{( (t.budget || 0) + ASSETS.reduce((acc, ast) => acc + (t.portfolio?.[ast.id] || 0) * (currentPrices[ast.id] || 10000), 0) ).toLocaleString()}원</span>
                                     </div>
                                 ))}
-                                {allTeams.length === 0 && <div className="text-center py-10 text-slate-500 italic text-sm">참가한 팀이 없습니다.</div>}
+                                {allTeams.length === 0 && <div className="text-center py-10 text-slate-500 italic text-sm">참가 중인 조가 없습니다.</div>}
                             </div>
                         </div>
                     </div>
@@ -450,9 +445,20 @@
                 }
             }, [gameState?.currentDayIdx, gameState?.phase]);
 
-            // 핵심: 투자 단계 진입 시 무조건 투자 화면을 그리도록 우선순위 조정
+            if (!gameState || gameState.phase === 'lobby') {
+                return (
+                    <div className="h-full py-20 flex flex-col items-center gap-6 text-center fade-in">
+                        <div className="bg-blue-600/10 p-8 rounded-full animate-pulse border border-blue-500/20">
+                            <RefreshCw size={64} className="animate-spin-slow text-blue-500" />
+                        </div>
+                        <h2 className="text-2xl font-black uppercase tracking-tighter">참가 완료</h2>
+                        <p className="text-slate-400 text-sm max-w-[200px] leading-relaxed">참가 완료. 관리자의 시작 신호를 기다리세요.</p>
+                    </div>
+                );
+            }
+
             if (gameState.phase === 'investment' || gameState.phase === 'result') {
-                const currentPrices = gameState.currentPrices || (gameState.priceHistory && gameState.priceHistory[gameState.currentDayIdx]) || { flour: 10000, oil: 10000, wood: 10000, coke: 10000 };
+                const currentPrices = gameState.currentPrices || { flour: 10000, oil: 10000, wood: 10000, coke: 10000 };
                 const worth = (myTeamData?.budget || 0) + ASSETS.reduce((acc, a) => acc + (myTeamData?.portfolio?.[a.id] || 0) * (currentPrices[a.id] || 0), 0);
                 const sorted = [...allTeams].sort((a,b) => {
                     const getW = (t) => (t.budget || 0) + ASSETS.reduce((acc, ast) => acc + (t.portfolio?.[ast.id] || 0) * (currentPrices[ast.id] || 10000), 0);
@@ -467,7 +473,7 @@
                         <div className={`blackout-overlay ${isBlackout ? 'active' : ''}`}>
                             <div className="text-center">
                                 <h1 className="text-4xl font-black text-white mb-2">{DAYS[gameState.currentDayIdx]}이 되었습니다</h1>
-                                <p className="text-blue-400 font-bold tracking-widest animate-pulse uppercase">시장 상황 업데이트 중...</p>
+                                <p className="text-blue-400 font-bold tracking-widest animate-pulse uppercase">시장 정보 갱신 중...</p>
                             </div>
                         </div>
                         {selectedHint && (
@@ -483,11 +489,11 @@
                             <div className="lg:col-span-2 space-y-6">
                                 <div className="bg-slate-900 p-6 rounded-[2rem] border border-slate-800 shadow-xl overflow-hidden relative">
                                     <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-emerald-500"></div>
-                                    <h3 className="font-bold text-emerald-400 mb-6 uppercase text-[10px] tracking-widest flex items-center gap-2"><SafeIcon name="TrendingUp" size={14}/> {DAYS[gameState.currentDayIdx]} 마켓</h3>
+                                    <h3 className="font-bold text-emerald-400 mb-6 uppercase text-[10px] tracking-widest flex items-center gap-2"><TrendingUp size={14}/> {DAYS[gameState.currentDayIdx]} 실시간 마켓</h3>
                                     <div className="grid grid-cols-2 gap-4">
                                         {ASSETS.map(a => (
                                             <div key={a.id} className="bg-slate-800/40 p-4 rounded-2xl border border-slate-800/60">
-                                                <div className="flex justify-between items-start mb-4"><div className="flex gap-2 items-center"><span className="text-2xl">{a.icon}</span><span className="font-bold">{a.name}</span></div><div className="text-[10px] text-blue-400 font-bold">보유량: {myTeamData?.portfolio?.[a.id] || 0}</div></div>
+                                                <div className="flex justify-between items-start mb-4"><div className="flex gap-2 items-center"><span className="text-2xl">{a.icon}</span><span className="font-bold">{a.name}</span></div><div className="text-[10px] text-blue-400 font-bold">보유: {myTeamData?.portfolio?.[a.id] || 0}</div></div>
                                                 <div className="flex justify-between items-center"><div className="font-mono font-black text-xl">{(currentPrices[a.id] || 0).toLocaleString()}원</div><div className="flex gap-1"><button onClick={() => trade(a.id, 1)} className="bg-emerald-600 px-3 py-1.5 rounded-lg text-[10px] font-black">매수</button><button onClick={() => trade(a.id, -1)} className="bg-rose-600 px-3 py-1.5 rounded-lg text-[10px] font-black">매도</button></div></div>
                                             </div>
                                         ))}
@@ -500,9 +506,9 @@
                             </div>
                             <div className="space-y-6">
                                 <div className="bg-slate-900 p-8 rounded-[2rem] border border-slate-800 shadow-2xl">
-                                    <p className="text-[10px] text-slate-500 uppercase font-black mb-2">포트폴리오 가치</p><p className="text-3xl font-mono font-black text-blue-400 mb-8">{worth.toLocaleString()}원</p>
+                                    <p className="text-[10px] text-slate-500 uppercase font-black mb-2">포트폴리오 총액</p><p className="text-3xl font-mono font-black text-blue-400 mb-8">{worth.toLocaleString()}원</p>
                                     <div className="bg-slate-950 p-6 rounded-2xl border border-slate-800"><p className="text-[10px] text-slate-500 font-black mb-1">보유 현금</p><p className="text-2xl font-mono font-black text-emerald-400">{(myTeamData?.budget || 0).toLocaleString()}원</p></div>
-                                    {isWinner && <div className="mt-6 p-4 bg-yellow-500/20 border border-yellow-500/30 rounded-2xl text-center text-yellow-500 font-black">🎉 최종 우승! 🎉</div>}
+                                    {isWinner && <div className="mt-6 p-4 bg-yellow-500/20 border border-yellow-500/30 rounded-2xl text-center text-yellow-500 font-black animate-bounce">🎉 최종 우승! 축하합니다! 🎉</div>}
                                 </div>
                                 {gameState.phase === 'result' && !isWinner && <div className="bg-slate-900/50 p-6 rounded-2xl border border-slate-800 text-center font-bold text-slate-500 uppercase">순위: {sorted.findIndex(t => t.id === role) + 1}위</div>}
                             </div>
@@ -533,14 +539,14 @@
                                     <div className="grid grid-cols-3 gap-4">
                                         {[0,1,2].map(i => (
                                             <div key={i} className="flex gap-1">
-                                                <input type="number" placeholder="X" value={input[i*2]} onChange={e=> {let n=[...input]; n[i*2]=e.target.value; setInput(n)}} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl text-center text-xl font-bold focus:border-blue-500" />
-                                                <input type="number" placeholder="Y" value={input[i*2+1]} onChange={e=> {let n=[...input]; n[i*2+1]=e.target.value; setInput(n)}} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl text-center text-xl font-bold focus:border-blue-500" />
+                                                <input type="number" placeholder="X" value={input[i*2]} onChange={e=> {let n=[...input]; n[i*2]=e.target.value; setInput(n)}} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl text-center text-xl font-bold focus:border-blue-500 outline-none" />
+                                                <input type="number" placeholder="Y" value={input[i*2+1]} onChange={e=> {let n=[...input]; n[i*2+1]=e.target.value; setInput(n)}} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl text-center text-xl font-bold focus:border-blue-500 outline-none" />
                                             </div>
                                         ))}
                                     </div>
-                                    <button onClick={() => submitPassword(input)} className="w-full bg-blue-600 py-4 rounded-2xl font-bold shadow-xl">정답 제출</button>
+                                    <button onClick={() => submitPassword(input)} className="w-full bg-blue-600 py-4 rounded-2xl font-bold shadow-xl active:scale-95 transition-all">해독 정보 전송</button>
                                 </div>
-                            ) : <div className="p-10 bg-blue-600/10 border border-blue-500/30 rounded-3xl text-center text-blue-400 font-black">해독 완료! 다른 팀들을 기다리는 중입니다.</div>}
+                            ) : <div className="p-10 bg-blue-600/10 border border-blue-500/30 rounded-3xl text-center text-blue-400 font-black">해독 완료. 다른 조를 기다리는 중...</div>}
                         </div>
                     </div>
                 );
@@ -553,9 +559,9 @@
                     <div className="max-w-md mx-auto fade-in">
                         <div className="bg-slate-900 p-8 rounded-[2.5rem] border border-slate-800 text-center">
                             <div className={`w-20 h-20 rounded-3xl mx-auto mb-6 flex items-center justify-center ${correct ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}><SafeIcon name={correct ? "Unlock" : "Lock"} size={40} /></div>
-                            <h3 className="text-2xl font-black mb-6 uppercase">{correct ? "성공" : "실패"}</h3>
+                            <h3 className="text-2xl font-black mb-6 uppercase">{correct ? "해독 성공" : "해독 실패"}</h3>
                             <p className="bg-slate-950 p-6 rounded-2xl border border-slate-800 text-sm mb-8 font-bold text-slate-300">{correct ? "A급 힌트를 하나 획득하셨습니다." : "B급 힌트를 하나 획득하셨습니다."}</p>
-                            {!ready ? (<button onClick={() => fb.updateDoc(fb.doc(fb.getFirestore(), 'investment_game', 'state', 'public', gameDocId), { readyTeams: fb.arrayUnion(role) })} className="w-full bg-blue-600 py-4 rounded-2xl font-bold transition-colors">{gameState.round === 5 ? "투자 경연대회 참가" : "다음 라운드 준비"}</button>) : <div className="text-emerald-500 font-black animate-pulse">대기 중...</div>}
+                            {!ready ? (<button onClick={() => fb.updateDoc(fb.doc(fb.getFirestore(), 'investment_game', 'state', 'public', gameDocId), { readyTeams: fb.arrayUnion(role) })} className="w-full bg-blue-600 py-4 rounded-2xl font-bold transition-all active:scale-95">{gameState.round === 5 ? "투자 경연대회 참가" : "다음 단계 준비"}</button>) : <div className="text-emerald-500 font-black animate-pulse">대기 중...</div>}
                         </div>
                     </div>
                 );
