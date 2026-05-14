@@ -133,7 +133,7 @@
 
         const SafeIcon = ({ name, size = 18, className = "" }) => {
             const IconComp = window.LucideReact ? window.LucideReact[name] : null;
-            if (!IconComp) return null;
+            if (!IconComp) return <div style={{width: size, height: size}} className={className}></div>;
             return <IconComp size={size} className={className} />;
         };
 
@@ -162,20 +162,24 @@
 
             useEffect(() => {
                 if (!fb) return;
-                const app = fb.initializeApp(firebaseConfig);
-                const db = fb.getFirestore(app);
-                fb.signInAnonymously(fb.getAuth(app));
+                try {
+                    const app = fb.initializeApp(firebaseConfig);
+                    const db = fb.getFirestore(app);
+                    fb.signInAnonymously(fb.getAuth(app));
 
-                const unsubGame = fb.onSnapshot(fb.doc(db, 'investment_game', 'state', 'public', gameDocId), (snap) => {
-                    if (snap.exists()) setGameState(snap.data());
-                });
+                    const unsubGame = fb.onSnapshot(fb.doc(db, 'investment_game', 'state', 'public', gameDocId), (snap) => {
+                        if (snap.exists()) setGameState(snap.data());
+                    });
 
-                const unsubTeams = fb.onSnapshot(fb.collection(db, 'investment_game', 'teams', 'entries'), (snap) => {
-                    setAllTeams(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-                    setLoading(false);
-                });
+                    const unsubTeams = fb.onSnapshot(fb.collection(db, 'investment_game', 'teams', 'entries'), (snap) => {
+                        setAllTeams(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+                        setLoading(false);
+                    });
 
-                return () => { unsubGame(); unsubTeams(); };
+                    return () => { unsubGame(); unsubTeams(); };
+                } catch (e) {
+                    console.error("Firebase Init Error:", e);
+                }
             }, [fb]);
 
             useEffect(() => {
@@ -199,23 +203,6 @@
                     audioRef.current.pause();
                 }
             }, [gameState?.phase, isMuted]);
-
-            useEffect(() => {
-                if (!fb || role !== 'admin' || !gameState) return;
-                const db = fb.getFirestore();
-
-                if (gameState.phase === 'password' && allTeams.length > 0) {
-                    const allSolved = allTeams.every(t => t.solvedRounds?.includes(gameState.round));
-                    if (allSolved) {
-                        fb.updateDoc(fb.doc(db, 'investment_game', 'state', 'public', gameDocId), { phase: 'round_result', readyTeams: [] });
-                    }
-                }
-
-                if (gameState.phase === 'round_result' && allTeams.length > 0) {
-                    const allReady = allTeams.every(t => gameState.readyTeams?.includes(t.id));
-                    if (allReady && gameState.round < 5) startNextRound();
-                }
-            }, [allTeams, gameState, fb, role]);
 
             useEffect(() => {
                 const tick = setInterval(() => {
@@ -289,7 +276,8 @@
 
             const joinTeam = async (n) => {
                 const id = `team_${n}`;
-                const ref = fb.doc(fb.getFirestore(), 'investment_game', 'teams', 'entries', id);
+                const db = fb.getFirestore();
+                const ref = fb.doc(db, 'investment_game', 'teams', 'entries', id);
                 const snap = await fb.getDoc(ref);
                 if (!snap.exists()) {
                     await fb.setDoc(ref, {
@@ -323,7 +311,7 @@
                 });
             };
 
-            if (loading) return <div className="h-screen flex items-center justify-center font-bold text-slate-500 animate-pulse uppercase tracking-[0.2em]">Connecting to Terminal...</div>;
+            if (loading || !fb) return <div className="h-screen flex flex-col items-center justify-center font-bold text-slate-500 animate-pulse space-y-4"><RefreshCw size={32} className="animate-spin" /><span>CONNECTING TO MAIN TERMINAL...</span></div>;
 
             if (!role) return (
                 <div className="h-screen flex items-center justify-center p-4">
@@ -374,67 +362,70 @@
 
                     <main className="flex-1 p-4 max-w-5xl mx-auto w-full fade-in pb-20">
                         {role === 'admin' ? (
-                            <div className="space-y-6">
-                                <section className="bg-slate-900 p-8 rounded-[2rem] border border-slate-800 shadow-2xl">
-                                    <h3 className="text-xs font-black text-blue-400 mb-8 uppercase tracking-[0.2em] flex items-center gap-2"><Play size={16}/> Central Command</h3>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <button onClick={startNextRound} disabled={gameState?.round >= 5 || gameState?.phase === 'investment' || gameState?.phase === 'password'} className="bg-slate-800 hover:bg-blue-600 py-6 rounded-3xl font-black shadow-lg disabled:opacity-30 transition-all border border-slate-700 uppercase tracking-widest text-sm flex flex-col items-center gap-2">
-                                            <Unlock size={20}/> {gameState?.round >= 5 ? "Mission Ends" : `Start Mission ${(gameState?.round || 0) + 1}`}
-                                        </button>
-                                        <button onClick={startInvestment} disabled={gameState?.phase === 'investment' || (gameState?.round < 5 && gameState?.phase !== 'round_result')} className="bg-slate-800 hover:bg-emerald-600 py-6 rounded-3xl font-black shadow-lg disabled:opacity-30 transition-all border border-slate-700 uppercase tracking-widest text-sm flex flex-col items-center gap-2">
-                                            <TrendingUp size={20}/> Launch Trading
-                                        </button>
-                                    </div>
-                                    <div className="mt-8 flex justify-between items-center px-2">
-                                        <div className="flex gap-4">
-                                            <div className="text-[10px] font-black text-slate-500 uppercase">Phase: <span className="text-white">{gameState?.phase || 'LOBBY'}</span></div>
-                                            <div className="text-[10px] font-black text-slate-500 uppercase">Round: <span className="text-white">{gameState?.round || 0}/5</span></div>
-                                        </div>
-                                        <button onClick={resetGame} className="text-[10px] text-rose-500 font-black uppercase tracking-widest hover:underline flex items-center gap-1"><RefreshCw size={12}/> Global Reset</button>
-                                    </div>
-                                </section>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div className="bg-slate-900 p-6 rounded-[2rem] border border-slate-800 shadow-xl">
-                                        <h3 className="text-xs font-black text-yellow-500 mb-6 uppercase tracking-widest flex items-center gap-2"><Users size={16}/> Live Team Status</h3>
-                                        <div className="space-y-2">
-                                            {allTeams.sort((a,b) => a.id.localeCompare(b.id)).map((t, i) => {
-                                                const solved = t.solvedRounds?.includes(gameState?.round);
-                                                return (
-                                                    <div key={t.id} className="flex justify-between items-center p-4 bg-slate-800/30 rounded-2xl border border-slate-800/50 text-sm">
-                                                        <div className="flex items-center gap-3">
-                                                            <div className={`w-2 h-2 rounded-full ${solved ? 'bg-emerald-500 shadow-[0_0_10px_#10b981]' : 'bg-slate-700'}`}></div>
-                                                            <span className="font-bold text-slate-300">{t.teamName}</span>
-                                                        </div>
-                                                        <div className="flex items-center gap-3">
-                                                            {solved && <CheckCircle2 size={16} className="text-emerald-500" />}
-                                                            <span className="text-emerald-400 font-mono font-bold">{t.budget?.toLocaleString()}원</span>
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                    <div className="bg-slate-900 p-6 rounded-[2rem] border border-slate-800 shadow-xl">
-                                        <h3 className="text-xs font-black text-blue-400 mb-6 uppercase tracking-widest flex items-center gap-2"><Package size={16}/> Current Market</h3>
-                                        <div className="grid grid-cols-2 gap-3">
-                                            {ASSETS.map(a => (
-                                                <div key={a.id} className="bg-slate-800/30 p-5 rounded-2xl border border-slate-800/50 text-center">
-                                                    <div className="text-3xl mb-2">{a.icon}</div>
-                                                    <div className="text-lg font-black font-mono tracking-tight">{(gameState?.currentPrices?.[a.id] || 0).toLocaleString()}</div>
-                                                    <div className="text-[10px] text-slate-500 uppercase font-black mt-1">{a.name}</div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
+                            <AdminUI gameState={gameState} allTeams={allTeams} startNextRound={startNextRound} startInvestment={startInvestment} resetGame={resetGame} fb={fb} />
                         ) : (
-                            <TeamUI 
-                                gameState={gameState} role={role} myTeamData={myTeamData} allTeams={allTeams}
-                                submitPassword={submitPassword} trade={trade} timeLeft={timeLeft} fb={fb}
-                            />
+                            <TeamUI gameState={gameState} role={role} myTeamData={myTeamData} allTeams={allTeams} submitPassword={submitPassword} trade={trade} timeLeft={timeLeft} fb={fb} />
                         )}
                     </main>
+                </div>
+            );
+        }
+
+        function AdminUI({ gameState, allTeams, startNextRound, startInvestment, resetGame, fb }) {
+            return (
+                <div className="space-y-6">
+                    <section className="bg-slate-900 p-8 rounded-[2rem] border border-slate-800 shadow-2xl">
+                        <h3 className="text-xs font-black text-blue-400 mb-8 uppercase tracking-[0.2em] flex items-center gap-2"><SafeIcon name="Play" size={16}/> Central Command</h3>
+                        <div className="grid grid-cols-2 gap-4">
+                            <button onClick={startNextRound} disabled={gameState?.round >= 5 || gameState?.phase === 'investment' || gameState?.phase === 'password'} className="bg-slate-800 hover:bg-blue-600 py-6 rounded-3xl font-black shadow-lg disabled:opacity-30 transition-all border border-slate-700 uppercase tracking-widest text-sm flex flex-col items-center gap-2">
+                                <Unlock size={20}/> {gameState?.round >= 5 ? "Mission Ends" : `Start Mission ${(gameState?.round || 0) + 1}`}
+                            </button>
+                            <button onClick={startInvestment} disabled={gameState?.phase === 'investment' || (gameState?.round < 5 && gameState?.phase !== 'round_result')} className="bg-slate-800 hover:bg-emerald-600 py-6 rounded-3xl font-black shadow-lg disabled:opacity-30 transition-all border border-slate-700 uppercase tracking-widest text-sm flex flex-col items-center gap-2">
+                                <TrendingUp size={20}/> Launch Trading
+                            </button>
+                        </div>
+                        <div className="mt-8 flex justify-between items-center px-2">
+                            <div className="flex gap-4">
+                                <div className="text-[10px] font-black text-slate-500 uppercase">Phase: <span className="text-white">{gameState?.phase || 'LOBBY'}</span></div>
+                                <div className="text-[10px] font-black text-slate-500 uppercase">Round: <span className="text-white">{gameState?.round || 0}/5</span></div>
+                            </div>
+                            <button onClick={resetGame} className="text-[10px] text-rose-500 font-black uppercase tracking-widest hover:underline flex items-center gap-1"><RefreshCw size={12}/> Global Reset</button>
+                        </div>
+                    </section>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="bg-slate-900 p-6 rounded-[2rem] border border-slate-800 shadow-xl">
+                            <h3 className="text-xs font-black text-yellow-500 mb-6 uppercase tracking-widest flex items-center gap-2"><SafeIcon name="Users" size={16}/> Live Team Status</h3>
+                            <div className="space-y-2">
+                                {allTeams.sort((a,b) => a.id.localeCompare(b.id)).map((t) => {
+                                    const solved = t.solvedRounds?.includes(gameState?.round);
+                                    return (
+                                        <div key={t.id} className="flex justify-between items-center p-4 bg-slate-800/30 rounded-2xl border border-slate-800/50 text-sm">
+                                            <div className="flex items-center gap-3">
+                                                <div className={`w-2 h-2 rounded-full ${solved ? 'bg-emerald-500 shadow-[0_0_10px_#10b981]' : 'bg-slate-700'}`}></div>
+                                                <span className="font-bold text-slate-300">{t.teamName}</span>
+                                            </div>
+                                            <div className="flex items-center gap-3">
+                                                {solved && <CheckCircle2 size={16} className="text-emerald-500" />}
+                                                <span className="text-emerald-400 font-mono font-bold">{t.budget?.toLocaleString()}원</span>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                        <div className="bg-slate-900 p-6 rounded-[2rem] border border-slate-800 shadow-xl">
+                            <h3 className="text-xs font-black text-blue-400 mb-6 uppercase tracking-widest flex items-center gap-2"><SafeIcon name="Package" size={16}/> Current Market</h3>
+                            <div className="grid grid-cols-2 gap-3">
+                                {ASSETS.map(a => (
+                                    <div key={a.id} className="bg-slate-800/30 p-5 rounded-2xl border border-slate-800/50 text-center">
+                                        <div className="text-3xl mb-2">{a.icon}</div>
+                                        <div className="text-lg font-black font-mono tracking-tight">{(gameState?.currentPrices?.[a.id] || 0).toLocaleString()}</div>
+                                        <div className="text-[10px] text-slate-500 uppercase font-black mt-1">{a.name}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
                 </div>
             );
         }
@@ -501,7 +492,7 @@
                         <div className={`grid grid-cols-1 lg:grid-cols-3 gap-8 fade-in ${isWinner ? 'glow-gold p-6 rounded-[3.5rem] bg-slate-900/40' : ''}`}>
                             <div className="lg:col-span-2 space-y-6">
                                 <div className="bg-slate-900 p-8 rounded-[2.5rem] border border-slate-800 shadow-xl relative overflow-hidden">
-                                    <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-blue-600 to-emerald-500"></div>
+                                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-600 to-emerald-500"></div>
                                     <h3 className="font-black text-blue-400 mb-8 uppercase text-[10px] tracking-[0.3em] flex items-center gap-2"><TrendingUp size={14}/> LIVE TRADING</h3>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                         {ASSETS.map(a => (
@@ -594,7 +585,7 @@
                     <div className="max-w-md mx-auto fade-in">
                         <div className="bg-slate-900 p-12 rounded-[3rem] border border-slate-800 text-center shadow-2xl">
                             <div className={`w-24 h-24 rounded-[2rem] mx-auto mb-8 flex items-center justify-center ${correct ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
-                                <Unlock size={48} />
+                                <SafeIcon name="Unlock" size={48} />
                             </div>
                             <h3 className="text-3xl font-black mb-4 uppercase italic">{correct ? "Success" : "Failure"}</h3>
                             <p className="bg-slate-950 p-8 rounded-3xl border border-slate-800 mb-10 text-slate-200 text-sm font-bold">
