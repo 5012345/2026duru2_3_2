@@ -15,16 +15,18 @@
         .math-font { font-family: 'Fira Code', monospace; }
         .fade-in { animation: fadeIn 0.5s ease-out forwards; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .glow-gold { box-shadow: 0 0 30px rgba(234, 179, 8, 0.4); border: 4px solid #eab308 !important; }
-        .blackout-overlay { 
-            position: fixed; inset: 0; background: black; z-index: 100; 
-            display: flex; align-items: center; justify-content: center;
-            opacity: 0; pointer-events: none; transition: opacity 0.5s ease;
-        }
-        .blackout-overlay.active { opacity: 1; pointer-events: auto; }
+        .glow-gold { box-shadow: 0 0 30px rgba(234, 179, 8, 0.6); border: 4px solid #eab308 !important; }
+        
         .hint-card-a { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); transition: all 0.3s ease; }
         .hint-card-b { background: linear-gradient(135deg, #94a3b8 0%, #475569 100%); transition: all 0.3s ease; }
         .hint-card:hover { transform: translateY(-5px); filter: brightness(1.1); cursor: pointer; }
+        
+        .blackout-overlay { 
+            position: fixed; inset: 0; background: black; z-index: 1000; 
+            display: flex; align-items: center; justify-content: center;
+            opacity: 0; pointer-events: none; transition: opacity 0.6s ease;
+        }
+        .blackout-overlay.active { opacity: 1; pointer-events: auto; }
         input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
     </style>
 </head>
@@ -36,18 +38,19 @@
         import { getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc, collection, getDocs, deleteDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-        window.FirebaseBridge = {
-            initializeApp, getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc, collection, getDocs, deleteDoc, arrayUnion,
-            getAuth, signInAnonymously, onAuthStateChanged
-        };
+        if (!window.FirebaseBridge) {
+            window.FirebaseBridge = {
+                initializeApp, getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc, collection, getDocs, deleteDoc, arrayUnion,
+                getAuth, signInAnonymously, onAuthStateChanged
+            };
+        }
     </script>
 
     <script type="text/babel">
     (function() {
         const { useState, useEffect, useMemo, useRef } = React;
         const { 
-            TrendingUp, Timer, Users, Lock, Unlock, 
-            Coins, Package, Info, Play, RefreshCw, Trophy, AlertCircle, ExternalLink, X, ChevronRight, FileText, CheckCircle, Clock
+            TrendingUp, Timer, Lock, Unlock, Coins, Info, Play, RefreshCw, Trophy, Volume2, VolumeX, X, CheckCircle2, ChevronRight 
         } = window.LucideReact || {};
 
         const firebaseConfig = {
@@ -61,8 +64,6 @@
 
         const gameDocId = "global_game_session"; 
         const ADMIN_PASSWORD = "123123";
-        const PW_TIME_LIMIT = 100;
-        const DAY_TIME_LIMIT = 60;
         const ASSETS = [
             { id: 'flour', name: '밀가루', icon: '🍞' },
             { id: 'oil', name: '석유', icon: '🛢️' },
@@ -70,84 +71,71 @@
             { id: 'coke', name: '콜라', icon: '🥤' }
         ];
         const DAYS = ["월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일"];
+        const PW_TIME_LIMIT = 100;
+        const DAY_TIME_LIMIT = 60;
 
-        const formatTerm = (coeff, varName, isFirst = false) => {
-            if (coeff === 0) return "";
-            let str = "";
-            if (coeff === 1) str = varName;
-            else if (coeff === -1) str = "-" + varName;
-            else str = coeff + varName;
-            
-            if (!isFirst && coeff > 0) return " + " + str;
-            if (!isFirst && coeff < 0) return " - " + str.substring(1);
-            return str;
-        };
-
-        const generateNormalPrice = () => {
+        // 확률 분포 가격 생성 (10,000원 중심, 1k~20k 범위)
+        const generateProbPrice = () => {
             const rand = (Math.random() + Math.random() + Math.random()) / 3; 
-            const min = 1000;
-            const max = 20000;
-            let price = Math.round((min + rand * (max - min)) / 1000) * 1000;
-            return Math.min(max, Math.max(min, price));
+            let price = Math.round((1000 + rand * 19000) / 1000) * 1000;
+            return Math.min(20000, Math.max(1000, price));
         };
 
-        const generateSystem = (difficulty) => {
-            const x = Math.floor(Math.random() * 9) + 1;
-            const y = Math.floor(Math.random() * 9) + 1;
+        const formatTerm = (c, char) => {
+            if (c === 0) return "";
+            let res = c > 0 ? " + " : " - ";
+            let absC = Math.abs(c);
+            if (absC === 1) res += char;
+            else res += absC + char;
+            return res;
+        };
 
-            if (difficulty === 'green') {
-                const b = Math.random() > 0.5 ? 1 : -1;
-                const c1 = x + b * y;
-                const c2 = x - b * y;
-                const eq1 = `${formatTerm(1, 'x', true)}${formatTerm(b, 'y')} = ${c1}`;
-                const eq2 = `${formatTerm(1, 'x', true)}${formatTerm(-b, 'y')} = ${c2}`;
-                return { eqs: [eq1, eq2], answer: [x, y] };
-            } else if (difficulty === 'yellow') {
-                let a = Math.floor(Math.random() * 3) + 2;
-                let b = Math.floor(Math.random() * 3) + 2;
-                let a2 = Math.floor(Math.random() * 2) + 2;
-                while (a === b * a2) { a = Math.floor(Math.random() * 5) + 2; }
-                const c1 = a * x + b * y;
-                const c2 = a2 * x + 1 * y;
-                const eq1 = `${formatTerm(a, 'x', true)}${formatTerm(b, 'y')} = ${c1}`;
-                const eq2 = `${formatTerm(a2, 'x', true)}${formatTerm(1, 'y')} = ${c2}`;
-                return { eqs: [eq1, eq2], answer: [x, y] };
+        const generateSystem = (type) => {
+            let x = Math.floor(Math.random() * 15) - 7;
+            let y = Math.floor(Math.random() * 15) - 7;
+            let a1, b1, a2, b2;
+
+            if (type === 'green') {
+                a1 = 1; b1 = 1; a2 = 1; b2 = -1;
+            } else if (type === 'yellow') {
+                do {
+                    a1 = Math.floor(Math.random() * 4) + 2;
+                    b1 = Math.floor(Math.random() * 4) + 1;
+                    a2 = Math.floor(Math.random() * 3) + 1;
+                    b2 = Math.floor(Math.random() * 3) - 4;
+                } while (a1 * b2 === a2 * b1);
             } else {
-                const p = Math.floor(Math.random() * 5) + 1;
-                let a = Math.floor(Math.random() * 3) + 2;
-                let b = Math.floor(Math.random() * 4) + 2;
-                while (a === b) { a = Math.floor(Math.random() * 5) + 2; }
-                const c1 = a * (x + p) + b * y;
-                const c2 = x + y;
-                const eq1 = `${a}(x + ${p})${formatTerm(b, 'y')} = ${c1}`;
-                const eq2 = `${formatTerm(1, 'x', true)}${formatTerm(1, 'y')} = ${c2}`;
-                return { eqs: [eq1, eq2], answer: [x, y] };
+                a1 = Math.floor(Math.random() * 3) + 2;
+                b1 = Math.floor(Math.random() * 3) + 1;
+                a2 = Math.floor(Math.random() * 2) + 2;
+                b2 = Math.floor(Math.random() * 3) + 1;
             }
-        };
 
-        const formatTime = (seconds) => {
-            const m = Math.floor(seconds / 60);
-            const s = seconds % 60;
-            return `${m}:${s < 10 ? '0' : ''}${s}`;
-        };
+            const c1 = a1 * x + b1 * y;
+            const formatEq = (a, b, c) => {
+                let s1 = a === 1 ? "x" : (a === -1 ? "-x" : a + "x");
+                let s2 = formatTerm(b, "y");
+                return `${s1}${s2} = ${c}`;
+            };
 
-        const SafeIcon = ({ name, size = 18, className = "" }) => {
-            const IconComp = window.LucideReact ? window.LucideReact[name] : null;
-            if (!IconComp) return null;
-            return <IconComp size={size} className={className} />;
+            let eq1 = formatEq(a1, b1, c1);
+            let eq2;
+            if (type === 'red') {
+                const p = Math.floor(Math.random() * 5) + 1;
+                eq2 = `${a2}(x + ${p})${formatTerm(b2, "y")} = ${a2*(x+p) + b2*y}`;
+            } else {
+                eq2 = formatEq(a2, b2, a2 * x + b2 * y);
+            }
+            return { eq1, eq2, x, y };
         };
 
         function App() {
             const [fb, setFb] = useState(null);
-            const [role, setRole] = useState(null); 
+            const [role, setRole] = useState(null);
             const [gameState, setGameState] = useState(null);
-            const [myTeamData, setMyTeamData] = useState(null);
             const [allTeams, setAllTeams] = useState([]);
-            const [loading, setLoading] = useState(true);
             const [timeLeft, setTimeLeft] = useState(0);
-            const [showAdminLogin, setShowAdminLogin] = useState(false);
-            const [adminPwInput, setAdminPwInput] = useState("");
-
+            const [isMuted, setIsMuted] = useState(false);
             const audioRef1 = useRef(null);
             const audioRef2 = useRef(null);
 
@@ -165,8 +153,7 @@
                 if (!fb) return;
                 const app = fb.initializeApp(firebaseConfig);
                 const db = fb.getFirestore(app);
-                const auth = fb.getAuth(app);
-                fb.signInAnonymously(auth);
+                fb.signInAnonymously(fb.getAuth(app));
 
                 const unsubGame = fb.onSnapshot(fb.doc(db, 'investment_game', 'state', 'public', gameDocId), (snap) => {
                     if (snap.exists()) setGameState(snap.data());
@@ -174,121 +161,68 @@
 
                 const unsubTeams = fb.onSnapshot(fb.collection(db, 'investment_game', 'teams', 'entries'), (snap) => {
                     setAllTeams(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-                    setLoading(false);
                 });
 
                 return () => { unsubGame(); unsubTeams(); };
             }, [fb]);
 
             useEffect(() => {
-                if (!gameState) return;
-                const phase = gameState.phase;
-                
-                const stopAll = () => {
-                    if (audioRef1.current) { audioRef1.current.pause(); audioRef1.current.currentTime = 0; }
-                    if (audioRef2.current) { audioRef2.current.pause(); audioRef2.current.currentTime = 0; }
-                };
-
-                if (phase === 'password' || phase === 'round_result') {
-                    stopAll();
-                    audioRef1.current?.play().catch(() => {});
-                } else if (phase === 'investment') {
-                    stopAll();
-                    audioRef2.current?.play().catch(() => {});
-                } else {
-                    stopAll();
-                }
-            }, [gameState?.phase]);
-
-            useEffect(() => {
-                if (role?.startsWith('team_')) {
-                    setMyTeamData(allTeams.find(t => t.id === role));
-                }
-            }, [allTeams, role]);
-
-            useEffect(() => {
-                if (!fb || role !== 'admin' || !gameState) return;
-                const db = fb.getFirestore();
-
-                if (gameState.phase === 'password' && allTeams.length > 0) {
-                    const allSolved = allTeams.every(t => t.solvedRounds?.includes(gameState.round));
-                    if (allSolved) {
-                        fb.updateDoc(fb.doc(db, 'investment_game', 'state', 'public', gameDocId), { 
-                            phase: 'round_result', readyTeams: [] 
-                        });
-                    }
-                }
-
-                if (gameState.phase === 'round_result' && allTeams.length > 0) {
-                    const allReady = allTeams.every(t => gameState.readyTeams?.includes(t.id));
-                    if (allReady && gameState.round < 5) {
-                        startNextRound();
-                    }
-                }
-            }, [allTeams, gameState, fb, role]);
-
-            useEffect(() => {
+                if (!gameState?.timerStart) return;
                 const tick = setInterval(() => {
-                    if (gameState?.timerStart) {
-                        const elapsed = Math.floor((Date.now() - gameState.timerStart) / 1000);
-                        const remaining = Math.max(0, (gameState.timerDuration || 0) - elapsed);
-                        setTimeLeft(remaining);
+                    const elapsed = Math.floor((Date.now() - gameState.timerStart) / 1000);
+                    const remain = Math.max(0, (gameState.timerDuration || 0) - elapsed);
+                    setTimeLeft(remain);
 
-                        if (role === 'admin') {
-                            if (gameState.phase === 'investment') {
-                                const dayIdx = Math.min(6, Math.floor(elapsed / 60));
-                                if (gameState.currentDayIdx !== dayIdx) {
-                                    fb.updateDoc(fb.doc(fb.getFirestore(), 'investment_game', 'state', 'public', gameDocId), {
-                                        currentDayIdx: dayIdx,
-                                        currentPrices: gameState.priceHistory[dayIdx]
-                                    });
-                                }
-                                if (remaining <= 0) {
-                                    fb.updateDoc(fb.doc(fb.getFirestore(), 'investment_game', 'state', 'public', gameDocId), { phase: 'result' });
-                                }
+                    if (role === 'admin') {
+                        if (gameState.phase === 'investment') {
+                            const dayIdx = Math.min(6, Math.floor(elapsed / DAY_TIME_LIMIT));
+                            if (gameState.currentDayIdx !== dayIdx) {
+                                fb.updateDoc(fb.doc(fb.getFirestore(), 'investment_game', 'state', 'public', gameDocId), { 
+                                    currentDayIdx: dayIdx,
+                                    currentPrices: gameState.priceHistory[dayIdx]
+                                });
                             }
-                            if (gameState.phase === 'password' && remaining <= 0) {
-                                fb.updateDoc(fb.doc(fb.getFirestore(), 'investment_game', 'state', 'public', gameDocId), { phase: 'round_result', readyTeams: [] });
-                            }
+                            if (remain <= 0) fb.updateDoc(fb.doc(fb.getFirestore(), 'investment_game', 'state', 'public', gameDocId), { phase: 'result' });
+                        }
+                        if (gameState.phase === 'password' && remain <= 0) {
+                            fb.updateDoc(fb.doc(fb.getFirestore(), 'investment_game', 'state', 'public', gameDocId), { phase: 'round_result' });
                         }
                     }
                 }, 500);
                 return () => clearInterval(tick);
             }, [gameState, role, fb]);
 
+            useEffect(() => {
+                if (!audioRef1.current) { audioRef1.current = new Audio('bgm.mp3'); audioRef1.current.loop = true; }
+                if (!audioRef2.current) { audioRef2.current = new Audio('bgm2.mp3'); audioRef2.current.loop = true; }
+
+                if (isMuted || !gameState?.phase || gameState.phase === 'lobby') {
+                    audioRef1.current.pause(); audioRef2.current.pause();
+                } else if (gameState.phase === 'investment') {
+                    audioRef1.current.pause(); audioRef2.current.play().catch(() => {});
+                } else {
+                    audioRef2.current.pause(); audioRef1.current.play().catch(() => {});
+                }
+            }, [gameState?.phase, isMuted]);
+
             const startNextRound = async () => {
                 const db = fb.getFirestore();
                 const nextRound = (gameState?.round || 0) + 1;
-                const q1 = generateSystem('green');
-                const q2 = generateSystem('yellow');
-                const q3 = generateSystem('red');
+                const systems = [generateSystem('green'), generateSystem('yellow'), generateSystem('red')];
                 
                 let history = gameState?.priceHistory || [];
-                if (nextRound === 1 || !history.length) {
-                    history = [{ flour: 10000, oil: 10000, wood: 10000, coke: 10000 }];
-                    for (let i = 1; i <= 7; i++) {
-                        const next = {};
-                        ASSETS.forEach(a => { next[a.id] = generateNormalPrice(); });
-                        history.push(next);
-                    }
+                if (nextRound === 1) {
+                    history = DAYS.map(() => {
+                        const obj = {};
+                        ASSETS.forEach(a => obj[a.id] = generateProbPrice());
+                        return obj;
+                    });
                 }
 
                 await fb.updateDoc(fb.doc(db, 'investment_game', 'state', 'public', gameDocId), {
-                    phase: 'password', round: nextRound, questions: [q1, q2, q3],
-                    answers: [...q1.answer, ...q2.answer, ...q3.answer],
-                    timerStart: Date.now(), timerDuration: PW_TIME_LIMIT, priceHistory: history, readyTeams: []
-                });
-            };
-
-            const startInvestment = async () => {
-                const db = fb.getFirestore();
-                const firstPrices = gameState.priceHistory && gameState.priceHistory[0] ? gameState.priceHistory[0] : { flour: 10000, oil: 10000, wood: 10000, coke: 10000 };
-                await fb.updateDoc(fb.doc(db, 'investment_game', 'state', 'public', gameDocId), {
-                    phase: 'investment',
-                    currentDayIdx: 0,
-                    timerStart: Date.now(),
-                    timerDuration: DAY_TIME_LIMIT * 7,
-                    currentPrices: firstPrices
+                    phase: 'password', round: nextRound, systems,
+                    timerStart: Date.now(), timerDuration: PW_TIME_LIMIT,
+                    priceHistory: history, readyTeams: []
                 });
             };
 
@@ -296,368 +230,307 @@
                 const db = fb.getFirestore();
                 const snap = await fb.getDocs(fb.collection(db, 'investment_game', 'teams', 'entries'));
                 await Promise.all(snap.docs.map(d => fb.deleteDoc(d.ref)));
-                await fb.setDoc(fb.doc(db, 'investment_game', 'state', 'public', gameDocId), { 
-                    phase: 'lobby', round: 0, currentPrices: { flour: 10000, oil: 10000, wood: 10000, coke: 10000 },
-                    readyTeams: [], currentDayIdx: 0, priceHistory: []
+                await fb.setDoc(fb.doc(db, 'investment_game', 'state', 'public', gameDocId), {
+                    phase: 'lobby', round: 0, currentDayIdx: 0, priceHistory: [],
+                    currentPrices: { flour: 10000, oil: 10000, wood: 10000, coke: 10000 }
                 });
             };
 
-            const joinTeam = async (n) => {
-                const id = `team_${n}`;
-                const db = fb.getFirestore();
-                const ref = fb.doc(db, 'investment_game', 'teams', 'entries', id);
-                const snap = await fb.getDoc(ref);
-                if (!snap.exists()) {
-                    await fb.setDoc(ref, {
-                        teamName: `${n}조`, budget: 100000, portfolio: { flour: 0, oil: 0, wood: 0, coke: 0 },
-                        hints: [], solvedRounds: []
-                    });
-                }
-                setRole(id);
-                // Audio Context Activation
-                if (audioRef1.current) audioRef1.current.volume = 0.5;
-                if (audioRef2.current) audioRef2.current.volume = 0.5;
-            };
+            if (!fb) return <div className="h-screen flex items-center justify-center font-black text-slate-700 animate-pulse uppercase tracking-widest">Initialising...</div>;
 
-            const submitPassword = async (input) => {
-                const isCorrect = input.map(Number).join(',') === (gameState.answers || []).join(',');
-                const nextDayIdx = Math.min(7, (gameState.round || 1));
-                const prices = gameState.priceHistory[nextDayIdx];
-                let hintText = "";
-                if (isCorrect) {
-                    ASSETS.forEach(a => hintText += `${a.name}:${prices[a.id].toLocaleString()}원 `);
-                } else {
-                    const shuf = [...ASSETS].sort(() => 0.5 - Math.random());
-                    hintText += `${shuf[0].name}:${prices[shuf[0].id].toLocaleString()}원, ${shuf[1].name}:${prices[shuf[1].id].toLocaleString()}원`;
-                }
-
-                await fb.updateDoc(fb.doc(fb.getFirestore(), 'investment_game', 'teams', 'entries', role), {
-                    lastRoundCorrect: isCorrect, solvedRounds: fb.arrayUnion(gameState.round),
-                    hints: fb.arrayUnion({ type: isCorrect ? 'A' : 'B', text: hintText, targetDay: DAYS[nextDayIdx % 7], used: false })
-                });
-            };
-
-            const trade = async (id, amt) => {
-                const price = gameState.currentPrices[id];
-                if (amt > 0 && myTeamData.budget < price * amt) return;
-                if (amt < 0 && myTeamData.portfolio[id] < Math.abs(amt)) return;
-                await fb.updateDoc(fb.doc(fb.getFirestore(), 'investment_game', 'teams', 'entries', role), {
-                    budget: myTeamData.budget - (price * amt), [`portfolio.${id}`]: myTeamData.portfolio[id] + amt
-                });
-            };
-
-            if (loading) return <div className="h-screen flex items-center justify-center font-bold text-slate-500 animate-pulse">SYSTEM INITIALIZING...</div>;
-
-            if (!role) return (
-                <div className="h-screen flex items-center justify-center p-4">
-                    <audio ref={audioRef1} src="bgm.mp3" loop />
-                    <audio ref={audioRef2} src="bgm2.mp3" loop />
-                    <div className="max-w-sm w-full bg-slate-900 p-8 rounded-3xl border border-slate-800 shadow-2xl fade-in text-center">
-                        <h1 className="text-2xl font-black bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent uppercase mb-8 leading-tight">연립방정식<br/>투자 경연대회</h1>
-                        <button onClick={() => setShowAdminLogin(true)} className="w-full bg-slate-800 py-4 rounded-2xl font-bold mb-4 flex items-center justify-center gap-2 border border-slate-700 hover:bg-slate-700 transition-all"><SafeIcon name="Lock" /> 관리자 접속</button>
-                        <div className="grid grid-cols-2 gap-2">
-                            {[1,2,3,4,5,6,7,8,9,10].map(n => <button key={n} onClick={() => joinTeam(n)} className="bg-slate-800 py-3 rounded-xl border border-slate-700 font-bold hover:bg-blue-600 transition-all">{n}조 참가</button>)}
-                        </div>
-                    </div>
-                    {showAdminLogin && (
-                        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center">
-                            <div className="bg-slate-900 p-8 rounded-3xl w-80 shadow-2xl border border-slate-800">
-                                <input type="password" placeholder="PASSWORD" value={adminPwInput} onChange={e => setAdminPwInput(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl mb-4 text-center text-xl font-bold" />
-                                <button onClick={() => { if(adminPwInput===ADMIN_PASSWORD) { setRole('admin'); if (audioRef1.current) audioRef1.current.volume=0.5; } setShowAdminLogin(false); }} className="w-full bg-blue-600 py-4 rounded-xl font-bold">확인</button>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            );
+            if (!role) return <LoginUI setRole={setRole} fb={fb} isMuted={isMuted} setIsMuted={setIsMuted} />;
 
             return (
-                <div className="min-h-screen flex flex-col">
-                    <header className="bg-slate-900/80 backdrop-blur-md border-b border-slate-800 p-4 sticky top-0 z-50 flex justify-between items-center">
+                <div className="min-h-screen flex flex-col bg-slate-950">
+                    <header className="bg-slate-900/80 backdrop-blur-md border-b border-slate-800 p-4 sticky top-0 z-[100] flex justify-between items-center shadow-2xl">
                         <div className="flex items-center gap-3">
-                            <div className="bg-blue-600 p-2 rounded-xl"><SafeIcon name="Coins" size={20}/></div>
+                            <div className="bg-blue-600 p-2 rounded-xl shadow-lg shadow-blue-900/20"><Coins size={20}/></div>
                             <div>
-                                <h2 className="font-bold text-sm">연립방정식 투자 경연대회</h2>
-                                <p className="text-[10px] text-blue-500 font-bold uppercase">{role === 'admin' ? 'ADMIN' : myTeamData?.teamName}</p>
+                                <h2 className="font-black text-sm tracking-tighter uppercase">Simultaneous Equation</h2>
+                                <p className="text-[10px] text-blue-500 font-bold uppercase tracking-widest">{role === 'admin' ? 'ADMIN' : (allTeams.find(t=>t.id===role)?.id.replace('team_','') + '조')}</p>
                             </div>
                         </div>
-                        {gameState?.timerStart && (
-                            <div className="bg-slate-950 px-4 py-2 rounded-2xl font-mono text-xl border border-slate-800 text-blue-400 flex items-center gap-2">
-                                <span className="text-xs text-slate-500 font-sans mr-1">{gameState.phase === 'investment' ? DAYS[gameState.currentDayIdx] : ''}</span>
-                                <SafeIcon name="Timer" size={18} className="animate-pulse" /> 
-                                {gameState.phase === 'investment' ? formatTime(timeLeft % 60) : formatTime(timeLeft)}
-                            </div>
-                        )}
+                        <div className="flex items-center gap-3">
+                            <button onClick={() => setIsMuted(!isMuted)} className="p-2.5 bg-slate-800 rounded-xl hover:bg-slate-700 transition-colors">
+                                {isMuted ? <VolumeX size={18} className="text-rose-500" /> : <Volume2 size={18} className="text-emerald-500" />}
+                            </button>
+                            {gameState?.timerStart && (
+                                <div className="bg-slate-950 px-4 py-2 rounded-2xl font-mono text-xl border border-slate-800 text-blue-400 flex items-center gap-2 shadow-inner">
+                                    <Timer size={18} className="animate-pulse" />
+                                    {gameState.phase === 'investment' ? 
+                                        `${DAYS[gameState.currentDayIdx]} ${Math.floor((timeLeft % 60) / 60)}:${String(timeLeft % 60).padStart(2,'0')}` : 
+                                        `${Math.floor(timeLeft/60)}:${String(timeLeft%60).padStart(2,'0')}`}
+                                </div>
+                            )}
+                        </div>
                     </header>
 
-                    <main className="flex-1 p-4 max-w-5xl mx-auto w-full fade-in">
+                    <main className="flex-1 p-4 max-w-6xl mx-auto w-full fade-in">
                         {role === 'admin' ? (
-                            <AdminUI 
-                                gameState={gameState} allTeams={allTeams} 
-                                startNextRound={startNextRound} startInvestment={startInvestment} resetGame={resetGame}
-                            />
+                            <AdminUI gameState={gameState} allTeams={allTeams} startNextRound={startNextRound} resetGame={resetGame} fb={fb} timeLeft={timeLeft} />
                         ) : (
-                            <TeamUI 
-                                gameState={gameState} role={role} myTeamData={myTeamData} allTeams={allTeams}
-                                submitPassword={submitPassword} trade={trade} timeLeft={timeLeft} fb={fb}
-                            />
+                            <TeamUI gameState={gameState} role={role} allTeams={allTeams} fb={fb} timeLeft={timeLeft} />
                         )}
                     </main>
                 </div>
             );
         }
 
-        function AdminUI({ gameState, allTeams, startNextRound, startInvestment, resetGame }) {
-            const isMissionPhase = gameState?.phase === 'password' || gameState?.phase === 'round_result';
-            const isInvestmentPhase = gameState?.phase === 'investment' || gameState?.phase === 'result';
-
+        function LoginUI({ setRole, fb, isMuted, setIsMuted }) {
+            const [showAdmin, setShowAdmin] = useState(false);
+            const [pw, setPw] = useState("");
             return (
-                <div className="space-y-6">
-                    <section className="bg-slate-900 p-6 rounded-3xl border border-slate-800">
-                        <h3 className="text-xs font-bold text-blue-400 mb-6 uppercase tracking-widest flex justify-between">
-                            Game Management
-                            <span className="text-slate-500 italic">Phase: {gameState?.phase}</span>
-                        </h3>
-                        <div className="grid grid-cols-2 gap-4">
-                            <button onClick={startNextRound} disabled={gameState?.round >= 5 || gameState?.phase === 'investment'} className="bg-blue-600 py-4 rounded-2xl font-bold shadow-lg disabled:opacity-50 hover:bg-blue-500 transition-colors">
-                                {gameState?.round >= 5 ? "미션 종료" : `미션 ${(gameState?.round || 0) + 1} 시작`}
-                            </button>
-                            <button onClick={startInvestment} disabled={gameState?.phase === 'investment'} className="bg-emerald-600 py-4 rounded-2xl font-bold shadow-lg hover:bg-emerald-500 transition-colors">투자 경연 시작</button>
+                <div className="h-screen flex items-center justify-center p-4 bg-slate-950">
+                    <div className="max-w-sm w-full bg-slate-900 p-8 rounded-[2.5rem] border border-slate-800 shadow-2xl fade-in text-center">
+                        <div className="bg-blue-600/10 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-blue-500/20">
+                            <TrendingUp size={40} className="text-blue-500" />
                         </div>
-                        <button onClick={resetGame} className="mt-4 text-[10px] text-rose-500 font-black uppercase tracking-widest w-full text-right hover:underline">System Reset</button>
+                        <h1 className="text-2xl font-black mb-1 bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent uppercase tracking-tighter">연립방정식 투자대회</h1>
+                        <p className="text-[10px] text-slate-500 mb-8 font-bold tracking-widest uppercase italic">The Math & Trading Simulator</p>
+                        <div className="grid grid-cols-2 gap-2 mb-6">
+                            {[1,2,3,4,5,6,7,8,9,10].map(n => (
+                                <button key={n} onClick={() => setRole(`team_${n}`)} className="bg-slate-800 py-3.5 rounded-2xl border border-slate-700 hover:bg-blue-600 hover:border-blue-500 transition-all font-black text-sm">{n}조</button>
+                            ))}
+                        </div>
+                        <button onClick={() => setShowAdmin(true)} className="text-[10px] text-slate-600 hover:text-slate-400 font-bold tracking-widest uppercase underline underline-offset-4 transition-colors">Admin Login</button>
+                        {showAdmin && (
+                            <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[200] p-4">
+                                <div className="bg-slate-900 p-8 rounded-[2rem] w-full max-w-xs border border-slate-800 shadow-2xl">
+                                    <h3 className="font-black text-lg mb-6 uppercase tracking-tighter">System Access</h3>
+                                    <input type="password" placeholder="PASSWORD" value={pw} onChange={e=>setPw(e.target.value)} className="w-full bg-slate-950 p-4 rounded-2xl mb-4 text-center font-bold text-xl outline-none border border-slate-800 focus:border-blue-500 transition-all" />
+                                    <button onClick={() => pw === ADMIN_PASSWORD ? setRole('admin') : alert('Wrong PW')} className="w-full bg-blue-600 py-4 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-blue-500 transition-colors">Authorize</button>
+                                    <button onClick={() => setShowAdmin(false)} className="w-full mt-2 text-slate-500 text-xs py-2 font-bold uppercase">Cancel</button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        function AdminUI({ gameState, allTeams, startNextRound, resetGame, fb, timeLeft }) {
+            const startInvestment = () => {
+                fb.updateDoc(fb.doc(fb.getFirestore(), 'investment_game', 'state', 'public', gameDocId), {
+                    phase: 'investment', timerStart: Date.now(), timerDuration: DAY_TIME_LIMIT * 7, currentDayIdx: 0,
+                    currentPrices: gameState.priceHistory[0]
+                });
+            };
+            return (
+                <div className="space-y-6 max-w-4xl mx-auto">
+                    <section className="bg-slate-900 p-8 rounded-[2.5rem] border border-slate-800 shadow-xl relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-emerald-500 opacity-50"></div>
+                        <h3 className="font-black text-blue-400 mb-8 uppercase text-xs tracking-[0.2em] flex items-center gap-2"><Play size={16}/> Operation Command</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <button onClick={startNextRound} disabled={gameState?.phase==='password' || gameState?.round >= 5} className="bg-blue-600 hover:bg-blue-500 py-5 rounded-[1.5rem] font-black text-sm uppercase tracking-widest shadow-lg shadow-blue-900/20 disabled:opacity-30 transition-all">Start Round { (gameState?.round || 0) + 1 }</button>
+                            <button onClick={startInvestment} disabled={gameState?.round < 5 || gameState?.phase === 'investment'} className="bg-emerald-600 hover:bg-emerald-500 py-5 rounded-[1.5rem] font-black text-sm uppercase tracking-widest shadow-lg shadow-emerald-900/20 disabled:opacity-30 transition-all">Start Investment</button>
+                        </div>
+                        <div className="mt-8 pt-6 border-t border-slate-800/50 flex justify-between items-center">
+                            <p className="text-[10px] text-slate-600 font-bold uppercase tracking-[0.3em]">System Mode: {gameState?.phase?.toUpperCase()}</p>
+                            <button onClick={resetGame} className="text-[10px] text-rose-500 hover:text-rose-400 font-black tracking-widest uppercase transition-colors">Global System Reset</button>
+                        </div>
                     </section>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {}
-                        <div className="bg-slate-900 p-6 rounded-3xl border border-slate-800">
-                            <h3 className="text-xs font-bold text-yellow-500 mb-4 uppercase flex justify-between items-center">
-                                {isMissionPhase ? "Submission Status" : "Live Ranking"}
-                                {isMissionPhase && <span className="text-[10px] font-normal lowercase tracking-normal">({allTeams.filter(t => t.solvedRounds?.includes(gameState.round)).length} / {allTeams.length} 제출 완료)</span>}
-                            </h3>
-                            <div className="space-y-2">
-                                {isMissionPhase ? (
-                                    allTeams.map(t => {
-                                        const hasSubmitted = t.solvedRounds?.includes(gameState.round);
-                                        return (
-                                            <div key={t.id} className={`flex justify-between p-3 rounded-xl border transition-colors ${hasSubmitted ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-slate-800/40 border-slate-800'}`}>
-                                                <span className="text-sm font-bold">{t.teamName}</span>
-                                                {hasSubmitted ? 
-                                                    <div className="flex items-center gap-1 text-emerald-400 text-xs font-bold"><CheckCircle size={14}/> 제출완료</div> : 
-                                                    <div className="flex items-center gap-1 text-slate-500 text-xs"><Clock size={14}/> 대기중</div>
-                                                }
-                                            </div>
-                                        );
-                                    })
-                                ) : (
-                                    [...allTeams].sort((a,b) => {
-                                        const getWorth = (t) => (t.budget || 0) + ASSETS.reduce((acc, ast) => acc + (t.portfolio?.[ast.id] || 0) * (gameState?.currentPrices?.[ast.id] || 10000), 0);
-                                        return getWorth(b) - getWorth(a);
-                                    }).map((t, i) => (
-                                        <div key={t.id} className="flex justify-between p-3 bg-slate-800/40 rounded-xl border border-slate-800 text-sm">
-                                            <span>{i+1}. {t.teamName}</span>
-                                            <span className="text-emerald-400 font-mono">{( (t.budget || 0) + ASSETS.reduce((acc, ast) => acc + (t.portfolio?.[ast.id] || 0) * (gameState?.currentPrices?.[ast.id] || 10000), 0) ).toLocaleString()}원</span>
-                                        </div>
-                                    ))
-                                )}
-                            </div>
-                        </div>
-
-                        {}
-                        <div className="bg-slate-900 p-6 rounded-3xl border border-slate-800">
-                            <h3 className="text-xs font-bold text-blue-400 mb-4 uppercase">Market Prices {isInvestmentPhase && `(${DAYS[gameState.currentDayIdx]})`}</h3>
-                            <div className="grid grid-cols-2 gap-2">
-                                {ASSETS.map(a => (
-                                    <div key={a.id} className="bg-slate-800/40 p-4 rounded-xl border border-slate-800 text-center">
-                                        <div className="text-2xl mb-1">{a.icon}</div>
-                                        <div className="text-lg font-black font-mono">{(gameState?.currentPrices?.[a.id] || 0).toLocaleString()}</div>
-                                        <div className="text-[10px] text-slate-500 font-bold uppercase">{a.name}</div>
+                    <div className="bg-slate-900 p-8 rounded-[2.5rem] border border-slate-800">
+                        <h3 className="font-black text-yellow-500 mb-6 text-xs uppercase tracking-widest">Team Live Status</h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                            {allTeams.sort((a,b)=>a.id.localeCompare(b.id)).map(t => (
+                                <div key={t.id} className="bg-slate-950 p-4 rounded-2xl flex justify-between items-center border border-slate-800">
+                                    <div>
+                                        <span className="font-black text-sm block mb-1">{t.id.replace('team_','')}조</span>
+                                        <span className="text-[10px] text-slate-500 font-mono">{t.budget?.toLocaleString()}원</span>
                                     </div>
-                                ))}
-                            </div>
+                                    {t.solvedRounds?.includes(gameState?.round) ? <CheckCircle2 size={20} className="text-emerald-500"/> : <div className="w-5 h-5 rounded-full border-2 border-slate-800 animate-pulse"/>}
+                                </div>
+                            ))}
                         </div>
                     </div>
                 </div>
             );
         }
 
-        function TeamUI({ gameState, role, myTeamData, allTeams, submitPassword, trade, timeLeft, fb }) {
-            const [input, setInput] = useState(['','','','','','']);
+        function TeamUI({ gameState, role, allTeams, fb, timeLeft }) {
+            const myData = allTeams.find(t => t.id === role);
+            const [inputs, setInputs] = useState(["","","","","",""]);
+            const [showHint, setShowHint] = useState(null);
             const [isBlackout, setIsBlackout] = useState(false);
-            const [selectedHint, setSelectedHint] = useState(null);
 
             useEffect(() => {
                 if (gameState?.phase === 'investment') {
                     setIsBlackout(true);
-                    const timer = setTimeout(() => setIsBlackout(false), 1200);
+                    const timer = setTimeout(() => setIsBlackout(false), 800);
                     return () => clearTimeout(timer);
                 }
             }, [gameState?.currentDayIdx]);
 
-            if (!gameState || gameState.phase === 'lobby') {
-                return (
-                    <div className="h-full py-20 flex flex-col items-center gap-6 text-center fade-in">
-                        <div className="bg-blue-600/10 p-8 rounded-full animate-pulse border border-blue-500/20">
-                            <SafeIcon name="RefreshCw" size={64} className="animate-spin-slow text-blue-500" />
+            const submit = async () => {
+                const ans = gameState.systems.flatMap(s => [s.x, s.y]);
+                const isCorrect = inputs.every((v, i) => parseInt(v) === ans[i]);
+                const db = fb.getFirestore();
+                await fb.updateDoc(fb.doc(db, 'investment_game', 'teams', 'entries', role), {
+                    solvedRounds: fb.arrayUnion(gameState.round),
+                    hints: fb.arrayUnion({ type: isCorrect ? 'A' : 'B', round: gameState.round })
+                });
+            };
+
+            const trade = async (id, amt) => {
+                if (gameState?.phase !== 'investment') return;
+                const price = gameState.currentPrices[id];
+                if (amt > 0 && myData.budget < price) return;
+                if (amt < 0 && (myData.portfolio?.[id] || 0) < 1) return;
+                await fb.updateDoc(fb.doc(fb.getFirestore(), 'investment_game', 'teams', 'entries', role), {
+                    budget: myData.budget - (price * amt),
+                    [`portfolio.${id}`]: (myData.portfolio?.[id] || 0) + amt
+                });
+            };
+
+            if (!gameState || gameState.phase === 'lobby') return (
+                <div className="h-96 flex flex-col items-center justify-center gap-6 text-slate-600 fade-in">
+                    <RefreshCw className="animate-spin-slow" size={48} />
+                    <div className="text-center">
+                        <p className="font-black text-xl text-slate-400 mb-1">ENTRY REGISTERED</p>
+                        <p className="text-xs font-bold uppercase tracking-widest opacity-60">Waiting for Admin to initialize mission...</p>
+                    </div>
+                </div>
+            );
+
+            if (gameState.phase === 'password') {
+                if (myData?.solvedRounds?.includes(gameState.round)) return (
+                    <div className="h-96 flex flex-col items-center justify-center gap-6 fade-in text-emerald-500">
+                        <div className="bg-emerald-500/10 p-10 rounded-full border border-emerald-500/20"><CheckCircle2 size={64} className="animate-bounce"/></div>
+                        <div className="text-center">
+                            <p className="font-black text-2xl mb-1">DATA TRANSMITTED</p>
+                            <p className="text-xs font-bold uppercase tracking-widest opacity-60">Waiting for other teams to decode...</p>
                         </div>
-                        <h2 className="text-2xl font-black uppercase tracking-tighter">참가 완료</h2>
-                        <p className="text-slate-500 text-sm max-w-[200px] leading-relaxed">관리자가 미션을 시작할 때까지 대기해 주세요.</p>
+                    </div>
+                );
+                return (
+                    <div className="max-w-3xl mx-auto space-y-6 fade-in">
+                        <div className="bg-slate-900 p-8 rounded-[3rem] border border-slate-800 shadow-2xl relative overflow-hidden">
+                            <div className="flex justify-between items-center mb-8">
+                                <h3 className="font-black text-2xl tracking-tighter uppercase">Decrypting Mission {gameState.round}</h3>
+                                <span className="bg-blue-600 px-3 py-1 rounded-full text-[10px] font-black uppercase">Level: Grade 8</span>
+                            </div>
+                            <div className="grid grid-cols-1 gap-6 mb-10">
+                                {gameState.systems.map((s, i) => (
+                                    <div key={i} className={`bg-slate-950 p-8 rounded-3xl border-l-8 ${i===0?'border-emerald-500':i===1?'border-yellow-500':'border-rose-500 shadow-[0_0_20px_rgba(244,63,94,0.1)]'}`}>
+                                        <p className="text-[10px] text-slate-500 font-black mb-4 uppercase tracking-widest">Equation Set {i+1}</p>
+                                        <div className="math-font text-2xl mb-8 space-y-2 text-slate-100 font-bold">{s.eq1}<br/>{s.eq2}</div>
+                                        <div className="flex gap-4">
+                                            <div className="flex-1 group">
+                                                <label className="text-[10px] text-slate-600 font-black mb-1 block uppercase">Result X</label>
+                                                <input type="number" value={inputs[i*2]} onChange={e=>{let n=[...inputs]; n[i*2]=e.target.value; setInputs(n)}} className="w-full bg-slate-900 border border-slate-800 p-4 rounded-2xl text-center text-xl font-bold focus:border-blue-500 transition-all outline-none" />
+                                            </div>
+                                            <div className="flex-1 group">
+                                                <label className="text-[10px] text-slate-600 font-black mb-1 block uppercase">Result Y</label>
+                                                <input type="number" value={inputs[i*2+1]} onChange={e=>{let n=[...inputs]; n[i*2+1]=e.target.value; setInputs(n)}} className="w-full bg-slate-900 border border-slate-800 p-4 rounded-2xl text-center text-xl font-bold focus:border-blue-500 transition-all outline-none" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <button onClick={submit} className="w-full bg-blue-600 py-5 rounded-[2rem] font-black text-lg uppercase tracking-widest shadow-xl shadow-blue-900/30 hover:bg-blue-500 active:scale-95 transition-all">Submit Decoding Data</button>
+                        </div>
                     </div>
                 );
             }
 
-            if (gameState.phase === 'investment' || gameState.phase === 'result') {
-                const currentPrices = gameState.currentPrices || { flour: 10000, oil: 10000, wood: 10000, coke: 10000 };
-                const worth = (myTeamData?.budget || 0) + ASSETS.reduce((acc, a) => acc + (myTeamData?.portfolio?.[a.id] || 0) * (currentPrices[a.id] || 0), 0);
-                const sorted = [...allTeams].sort((a,b) => {
-                    const getW = (t) => (t.budget || 0) + ASSETS.reduce((acc, ast) => acc + (t.portfolio?.[ast.id] || 0) * (currentPrices[ast.id] || 10000), 0);
-                    return getW(b) - getW(a);
-                });
-                const isWinner = gameState.phase === 'result' && sorted[0]?.id === role;
-
-                const aHints = myTeamData?.hints?.filter(h => h.type === 'A') || [];
-                const bHints = myTeamData?.hints?.filter(h => h.type === 'B') || [];
-
+            if (gameState.phase === 'investment') {
+                const totalInvested = ASSETS.reduce((acc,a)=>acc+(myData?.portfolio?.[a.id]||0)*(gameState.currentPrices?.[a.id]||10000),0);
                 return (
                     <div className="relative">
-                        <div className={`blackout-overlay ${isBlackout ? 'active' : ''}`}>
-                            <div className="text-center">
-                                <h1 className="text-4xl font-black text-white mb-2">{DAYS[gameState.currentDayIdx]}이 되었습니다</h1>
-                                <p className="text-blue-400 font-bold tracking-widest animate-pulse">시장을 분석하십시오...</p>
-                            </div>
-                        </div>
-
-                        {selectedHint && (
-                            <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[200] flex items-center justify-center p-6" onClick={() => setSelectedHint(null)}>
-                                <div className="bg-slate-900 border-2 border-amber-500 p-8 rounded-3xl max-w-sm w-full shadow-[0_0_50px_rgba(245,158,11,0.3)] fade-in" onClick={e => e.stopPropagation()}>
-                                    <div className="flex justify-between items-center mb-6">
-                                        <h4 className="font-black text-amber-500 text-xl uppercase italic">Intelligence Report</h4>
-                                        <button onClick={() => setSelectedHint(null)} className="text-slate-500 hover:text-white"><X size={24}/></button>
-                                    </div>
-                                    <div className="bg-slate-950 p-6 rounded-2xl border border-slate-800 text-center">
-                                        <p className="text-xs text-slate-500 mb-4 font-bold uppercase tracking-widest">{selectedHint.targetDay} 정보</p>
-                                        <p className="text-lg font-bold text-slate-100 leading-relaxed whitespace-pre-line">{selectedHint.text}</p>
-                                    </div>
-                                    <button onClick={() => setSelectedHint(null)} className="w-full mt-8 bg-amber-600 py-4 rounded-xl font-bold">확인 완료</button>
-                                </div>
-                            </div>
-                        )}
-
-                        <div className={`grid grid-cols-1 lg:grid-cols-3 gap-6 fade-in ${isWinner ? 'glow-gold p-4 rounded-[3rem]' : ''}`}>
+                        <div className={`blackout-overlay ${isBlackout ? 'active' : ''}`}><h2 className="text-3xl font-black">{DAYS[gameState.currentDayIdx]}이 되었습니다</h2></div>
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 fade-in">
                             <div className="lg:col-span-2 space-y-6">
-                                <div className="bg-slate-900 p-6 rounded-[2rem] border border-slate-800 shadow-xl overflow-hidden relative">
-                                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-emerald-500"></div>
-                                    <h3 className="font-bold text-emerald-400 mb-6 uppercase text-[10px] tracking-widest flex items-center gap-2"><SafeIcon name="TrendingUp" size={14}/> {DAYS[gameState.currentDayIdx]} Market</h3>
-                                    <div className="grid grid-cols-2 gap-4">
+                                <div className="bg-slate-900 p-8 rounded-[2.5rem] border border-slate-800 shadow-xl">
+                                    <h3 className="text-xs font-black text-emerald-400 mb-6 tracking-widest uppercase">Live Market Feed</h3>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                         {ASSETS.map(a => (
-                                            <div key={a.id} className="bg-slate-800/40 p-4 rounded-2xl border border-slate-800/60">
-                                                <div className="flex justify-between items-start mb-4">
-                                                    <div className="flex gap-2 items-center"><span className="text-2xl">{a.icon}</span><span className="font-bold">{a.name}</span></div>
-                                                    <div className="text-[10px] text-blue-400 font-bold uppercase">보유: {myTeamData?.portfolio?.[a.id] || 0}</div>
+                                            <div key={a.id} className="bg-slate-950 p-5 rounded-3xl border border-slate-800 flex flex-col justify-between hover:border-slate-700 transition-all">
+                                                <div className="flex items-center gap-3 mb-6">
+                                                    <span className="text-4xl p-2 bg-slate-900 rounded-2xl">{a.icon}</span>
+                                                    <div><p className="font-black">{a.name}</p><p className="text-[10px] text-slate-500 font-bold">QTY: {myData?.portfolio?.[a.id] || 0}</p></div>
                                                 </div>
-                                                <div className="flex justify-between items-center">
-                                                    <div className="font-mono font-black text-xl">{(currentPrices[a.id] || 0).toLocaleString()}원</div>
-                                                    <div className="flex gap-1">
-                                                        <button onClick={() => trade(a.id, 1)} className="bg-emerald-600 px-3 py-1.5 rounded-lg text-[10px] font-black hover:bg-emerald-500">BUY</button>
-                                                        <button onClick={() => trade(a.id, -1)} className="bg-rose-600 px-3 py-1.5 rounded-lg text-[10px] font-black hover:bg-rose-500">SELL</button>
+                                                <div className="space-y-4">
+                                                    <p className="font-mono text-2xl font-black text-white">{(gameState.currentPrices?.[a.id] || 10000).toLocaleString()}<span className="text-xs ml-1 opacity-40 font-sans">원</span></p>
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        <button onClick={()=>trade(a.id, 1)} className="bg-emerald-600 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest">Buy</button>
+                                                        <button onClick={()=>trade(a.id, -1)} className="bg-rose-600/10 border border-rose-600/30 text-rose-500 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest">Sell</button>
                                                     </div>
                                                 </div>
                                             </div>
                                         ))}
                                     </div>
                                 </div>
-
                                 <div className="grid grid-cols-2 gap-4">
-                                    <div className="hint-card hint-card-a p-6 rounded-2xl shadow-xl flex flex-col items-center text-center text-white" 
-                                         onClick={() => aHints.length > 0 && setSelectedHint(aHints[aHints.length-1])}>
-                                        <div className="bg-white/20 p-3 rounded-xl mb-3"><Trophy size={24}/></div>
-                                        <h4 className="font-black text-sm uppercase mb-1 text-yellow-100">A급 카드</h4>
-                                        <p className="text-[10px] opacity-80">{aHints.length}개 보유 중</p>
+                                    <div onClick={()=>setShowHint('A')} className="hint-card hint-card-a p-6 rounded-[2rem] shadow-xl flex flex-col items-center justify-center text-white border-b-4 border-amber-800">
+                                        <Trophy size={32} className="mb-2"/>
+                                        <h4 className="font-black text-sm uppercase">Grade A Card</h4>
+                                        <p className="text-[10px] font-bold opacity-80">{myData?.hints?.filter(h=>h.type==='A').length}개 보유</p>
                                     </div>
-                                    <div className="hint-card hint-card-b p-6 rounded-2xl shadow-xl flex flex-col items-center text-center text-white"
-                                         onClick={() => bHints.length > 0 && setSelectedHint(bHints[bHints.length-1])}>
-                                        <div className="bg-white/20 p-3 rounded-xl mb-3"><FileText size={24}/></div>
-                                        <h4 className="font-black text-sm uppercase mb-1 text-slate-100">B급 카드</h4>
-                                        <p className="text-[10px] opacity-80">{bHints.length}개 보유 중</p>
+                                    <div onClick={()=>setShowHint('B')} className="hint-card hint-card-b p-6 rounded-[2rem] shadow-xl flex flex-col items-center justify-center text-white border-b-4 border-slate-700">
+                                        <Coins size={32} className="mb-2"/>
+                                        <h4 className="font-black text-sm uppercase">Grade B Card</h4>
+                                        <p className="text-[10px] font-bold opacity-80">{myData?.hints?.filter(h=>h.type==='B').length}개 보유</p>
                                     </div>
                                 </div>
                             </div>
-
-                            <div className="space-y-6">
-                                <div className="bg-slate-900 p-8 rounded-[2rem] border border-slate-800 shadow-2xl">
-                                    <p className="text-[10px] text-slate-500 uppercase font-black mb-2 tracking-widest">Total Assets</p>
-                                    <p className="text-3xl font-mono font-black text-blue-400 mb-8">{worth.toLocaleString()}원</p>
-                                    <div className="bg-slate-950 p-6 rounded-2xl border border-slate-800">
-                                        <p className="text-[10px] text-slate-500 uppercase font-black mb-1">Cash</p>
-                                        <p className="text-2xl font-mono font-black text-emerald-400">{(myTeamData?.budget || 0).toLocaleString()}원</p>
+                            <div className="bg-slate-900 p-8 rounded-[2.5rem] border border-slate-800 sticky top-28 h-fit shadow-2xl">
+                                <h3 className="text-xs font-black text-yellow-500 mb-8 uppercase tracking-widest">Asset Management</h3>
+                                <div className="space-y-10">
+                                    <div className="bg-slate-950 p-6 rounded-2xl border border-slate-800 shadow-inner">
+                                        <p className="text-[10px] text-slate-500 uppercase font-black mb-1">Available Cash</p>
+                                        <p className="text-3xl font-mono font-black text-emerald-400">{myData?.budget?.toLocaleString()}원</p>
                                     </div>
-                                    {isWinner && <div className="mt-6 p-4 bg-yellow-500/20 border border-yellow-500/30 rounded-2xl text-center text-yellow-500 font-black animate-bounce shadow-[0_0_20px_rgba(234,179,8,0.3)]">🎉 최종 우승! 축하합니다! 🎉</div>}
+                                    <div className="pt-8 border-t border-slate-800/50">
+                                        <p className="text-[10px] text-slate-600 uppercase font-black mb-1">Total Estimated Value</p>
+                                        <p className="text-4xl font-mono font-black text-blue-400">{(myData?.budget + totalInvested).toLocaleString()}원</p>
+                                    </div>
                                 </div>
-                                {gameState.phase === 'result' && !isWinner && (
-                                    <div className="bg-slate-900/50 p-6 rounded-2xl border border-slate-800 text-center">
-                                        <p className="text-slate-500 font-bold uppercase text-xs">최종 순위: {sorted.findIndex(t => t.id === role) + 1}위</p>
-                                    </div>
-                                )}
                             </div>
+                            {showHint && (
+                                <div className="fixed inset-0 bg-black/95 backdrop-blur-xl z-[500] flex items-center justify-center p-6 fade-in" onClick={()=>setShowHint(null)}>
+                                    <div className="bg-slate-900 border-2 border-amber-500/50 p-10 rounded-[3rem] max-w-sm w-full text-center shadow-[0_0_50px_rgba(245,158,11,0.2)]" onClick={e=>e.stopPropagation()}>
+                                        <h4 className="text-2xl font-black mb-4 text-amber-500 uppercase tracking-tighter italic">Intelligence Report</h4>
+                                        <p className="text-slate-400 text-xs mb-8 uppercase font-bold tracking-widest">{DAYS[gameState.currentDayIdx+1]} 예상 가격</p>
+                                        <div className="bg-slate-950 p-6 rounded-3xl space-y-3 mb-10 border border-slate-800">
+                                            {ASSETS.map((a, i) => {
+                                                const show = showHint === 'A' || (showHint === 'B' && i < 2);
+                                                return (
+                                                    <div key={a.id} className={`flex justify-between items-center ${show ? '' : 'opacity-20'}`}>
+                                                        <span className="font-bold">{a.icon} {a.name}</span>
+                                                        <span className="font-mono text-blue-400 font-bold">{show ? (gameState.priceHistory[gameState.currentDayIdx+1]?.[a.id] || '?').toLocaleString() + '원' : 'HIDDEN'}</span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                        <button onClick={()=>setShowHint(null)} className="w-full bg-amber-600 py-4 rounded-2xl font-black uppercase text-sm tracking-widest shadow-lg shadow-amber-900/30">Confirm Data</button>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 );
             }
 
-            if (gameState.phase === 'password') {
-                const solved = myTeamData?.solvedRounds?.includes(gameState.round);
+            if (gameState.phase === 'result') {
+                const total = myData?.budget + ASSETS.reduce((acc,a)=>acc+(myData.portfolio?.[a.id]||0)*(gameState.currentPrices?.[a.id]||10000),0);
+                const sorted = [...allTeams].sort((a,b) => {
+                    const getW = t => (t.budget || 0) + ASSETS.reduce((acc,ast)=>acc+(t.portfolio?.[ast.id]||0)*(gameState.currentPrices?.[ast.id]||10000),0);
+                    return getW(b) - getW(a);
+                });
+                const isWinner = sorted[0]?.id === role;
                 return (
-                    <div className="max-w-2xl mx-auto space-y-6 fade-in">
-                        <div className="bg-slate-900 p-8 rounded-[2.5rem] border-2 border-blue-600 shadow-2xl">
-                            <div className="flex justify-between mb-8 items-start">
-                                <div>
-                                    <span className="bg-blue-600 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase mb-2 inline-block">ROUND {gameState.round}</span>
-                                    <h3 className="text-2xl font-black uppercase tracking-tighter">정보 해독 미션</h3>
-                                </div>
-                                <div className="text-blue-400 font-mono text-2xl animate-pulse flex items-center gap-2"><Clock size={24}/> {formatTime(timeLeft)}</div>
+                    <div className="max-w-xl mx-auto py-10">
+                        <div className={`p-12 rounded-[4rem] text-center fade-in ${isWinner ? 'glow-gold bg-slate-900' : 'bg-slate-900 border border-slate-800'}`}>
+                            <div className={`w-24 h-24 rounded-full mx-auto mb-8 flex items-center justify-center ${isWinner ? 'bg-yellow-500 shadow-lg shadow-yellow-500/40' : 'bg-slate-800'}`}>
+                                <Trophy size={48} className={isWinner ? "text-slate-900" : "text-slate-500"} />
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-                                {gameState.questions.map((q, idx) => (
-                                    <div key={idx} className={`bg-slate-950 p-6 rounded-3xl border-2 ${idx===0?'border-emerald-500/30':idx===1?'border-yellow-500/30':'border-rose-500/30'}`}>
-                                        <div className="text-[10px] font-black opacity-40 uppercase mb-2">Q{idx+1}</div>
-                                        <div className="math-font text-sm font-bold space-y-1">{q.eqs.map((e, i) => <div key={i}>{e}</div>)}</div>
-                                    </div>
-                                ))}
+                            <h2 className="text-4xl font-black mb-4 uppercase tracking-tighter">{isWinner ? "Victory!" : "Competition Over"}</h2>
+                            <p className="text-slate-500 font-bold mb-10 tracking-widest uppercase">{(role.replace('team_',''))}조 최종 리포트</p>
+                            <div className="bg-slate-950 p-10 rounded-[2.5rem] border border-slate-800 shadow-inner mb-8">
+                                <p className="text-[10px] text-slate-600 font-black mb-2 uppercase">Final Assets</p>
+                                <p className="text-5xl font-mono font-black text-blue-400 tracking-tighter">{total.toLocaleString()}<span className="text-lg ml-2 font-sans opacity-40">원</span></p>
                             </div>
-                            {!solved ? (
-                                <div className="space-y-6">
-                                    <div className="grid grid-cols-3 gap-4">
-                                        {[0,1,2].map(i => (
-                                            <div key={i} className="flex gap-1">
-                                                <input type="number" placeholder="X" value={input[i*2]} onChange={e=> {let n=[...input]; n[i*2]=e.target.value; setInput(n)}} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl text-center text-xl font-bold focus:border-blue-500 transition-colors" />
-                                                <input type="number" placeholder="Y" value={input[i*2+1]} onChange={e=> {let n=[...input]; n[i*2+1]=e.target.value; setInput(n)}} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl text-center text-xl font-bold focus:border-blue-500 transition-colors" />
-                                            </div>
-                                        ))}
-                                    </div>
-                                    <button onClick={() => submitPassword(input)} className="w-full bg-blue-600 py-4 rounded-2xl font-bold hover:bg-blue-500 shadow-xl transition-all">해독 정보 전송</button>
-                                </div>
-                            ) : <div className="p-10 bg-blue-600/10 border border-blue-500/30 rounded-3xl text-center text-blue-400 font-black animate-pulse">해독 완료. 다른 팀을 기다리는 중...</div>}
-                        </div>
-                    </div>
-                );
-            }
-
-            if (gameState.phase === 'round_result') {
-                const correct = myTeamData?.lastRoundCorrect;
-                const ready = gameState.readyTeams?.includes(role);
-                return (
-                    <div className="max-w-md mx-auto fade-in">
-                        <div className="bg-slate-900 p-8 rounded-[2.5rem] border border-slate-800 text-center">
-                            <div className={`w-20 h-20 rounded-3xl mx-auto mb-6 flex items-center justify-center ${correct ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
-                                <SafeIcon name={correct ? "Unlock" : "Lock"} size={40} />
-                            </div>
-                            <h3 className="text-2xl font-black mb-6 uppercase">{correct ? "Success" : "Failure"}</h3>
-                            <p className="bg-slate-950 p-6 rounded-2xl border border-slate-800 text-sm mb-8 font-bold">
-                                {correct ? "A급 힌트를 하나 획득하셨습니다." : "B급 힌트를 하나 획득하셨습니다."}
-                            </p>
-                            {!ready ? (
-                                <button onClick={() => fb.updateDoc(fb.doc(fb.getFirestore(), 'investment_game', 'state', 'public', gameDocId), { readyTeams: fb.arrayUnion(role) })} className="w-full bg-blue-600 py-4 rounded-2xl font-bold hover:bg-blue-500 shadow-lg">
-                                    {gameState.round === 5 ? "투자 경연대회 참가" : "다음 라운드 준비"}
-                                </button>
-                            ) : <div className="text-emerald-500 font-black animate-pulse py-4">다른 조의 준비를 기다리고 있습니다...</div>}
+                            {isWinner && <div className="animate-bounce inline-block px-6 py-2 bg-yellow-500 text-slate-900 rounded-full font-black text-sm uppercase tracking-widest">축하합니다! 최고 수익률 달성</div>}
                         </div>
                     </div>
                 );
@@ -666,8 +539,10 @@
         }
 
         const container = document.getElementById('root');
-        const root = ReactDOM.createRoot(container);
-        root.render(<App />);
+        if (!container._reactRootContainer) {
+            container._reactRootContainer = ReactDOM.createRoot(container);
+            container._reactRootContainer.render(<App />);
+        }
     })();
     </script>
 </body>
