@@ -47,8 +47,7 @@
         const { useState, useEffect, useMemo, useRef } = React;
         const { 
             TrendingUp, Timer, Users, Lock, Unlock, 
-            Coins, Package, Info, Play, RefreshCw, Trophy, AlertCircle, ExternalLink, X, ChevronRight, FileText,
-            Volume2, VolumeX, CheckCircle2, LayoutDashboard
+            Coins, Package, Info, Play, RefreshCw, Trophy, AlertCircle, ExternalLink, X, ChevronRight, FileText
         } = window.LucideReact || {};
 
         const firebaseConfig = {
@@ -148,8 +147,6 @@
             const [timeLeft, setTimeLeft] = useState(0);
             const [showAdminLogin, setShowAdminLogin] = useState(false);
             const [adminPwInput, setAdminPwInput] = useState("");
-            const [isMuted, setIsMuted] = useState(false);
-            const audioRef = useRef(null);
 
             useEffect(() => {
                 const interval = setInterval(() => {
@@ -165,7 +162,8 @@
                 if (!fb) return;
                 const app = fb.initializeApp(firebaseConfig);
                 const db = fb.getFirestore(app);
-                fb.signInAnonymously(fb.getAuth(app));
+                const auth = fb.getAuth(app);
+                fb.signInAnonymously(auth);
 
                 const unsubGame = fb.onSnapshot(fb.doc(db, 'investment_game', 'state', 'public', gameDocId), (snap) => {
                     if (snap.exists()) setGameState(snap.data());
@@ -185,22 +183,26 @@
                 }
             }, [allTeams, role]);
 
-            // BGM Control Logic
             useEffect(() => {
-                if (!audioRef.current) audioRef.current = new Audio();
-                const currentBgm = (gameState?.phase === 'investment') ? 'bgm2.mp3' : 'bgm.mp3';
-                
-                if (audioRef.current.src.indexOf(currentBgm) === -1) {
-                    audioRef.current.src = currentBgm;
-                    audioRef.current.loop = true;
+                if (!fb || role !== 'admin' || !gameState) return;
+                const db = fb.getFirestore();
+
+                if (gameState.phase === 'password' && allTeams.length > 0) {
+                    const allSolved = allTeams.every(t => t.solvedRounds?.includes(gameState.round));
+                    if (allSolved) {
+                        fb.updateDoc(fb.doc(db, 'investment_game', 'state', 'public', gameDocId), { 
+                            phase: 'round_result', readyTeams: [] 
+                        });
+                    }
                 }
 
-                if (!isMuted && gameState?.phase && gameState.phase !== 'lobby') {
-                    audioRef.current.play().catch(() => {});
-                } else {
-                    audioRef.current.pause();
+                if (gameState.phase === 'round_result' && allTeams.length > 0) {
+                    const allReady = allTeams.every(t => gameState.readyTeams?.includes(t.id));
+                    if (allReady && gameState.round < 5) {
+                        startNextRound();
+                    }
                 }
-            }, [gameState?.phase, isMuted]);
+            }, [allTeams, gameState, fb, role]);
 
             useEffect(() => {
                 const tick = setInterval(() => {
@@ -218,7 +220,9 @@
                                         currentPrices: gameState.priceHistory[dayIdx]
                                     });
                                 }
-                                if (remaining <= 0) fb.updateDoc(fb.doc(fb.getFirestore(), 'investment_game', 'state', 'public', gameDocId), { phase: 'result' });
+                                if (remaining <= 0) {
+                                    fb.updateDoc(fb.doc(fb.getFirestore(), 'investment_game', 'state', 'public', gameDocId), { phase: 'result' });
+                                }
                             }
                             if (gameState.phase === 'password' && remaining <= 0) {
                                 fb.updateDoc(fb.doc(fb.getFirestore(), 'investment_game', 'state', 'public', gameDocId), { phase: 'round_result', readyTeams: [] });
@@ -241,7 +245,7 @@
                     history = [{ flour: 10000, oil: 10000, wood: 10000, coke: 10000 }];
                     for (let i = 1; i <= 7; i++) {
                         const next = {};
-                        ASSETS.forEach(a => next[a.id] = generateNormalPrice());
+                        ASSETS.forEach(a => { next[a.id] = generateNormalPrice(); });
                         history.push(next);
                     }
                 }
@@ -255,15 +259,12 @@
 
             const startInvestment = async () => {
                 const db = fb.getFirestore();
-                const firstPrices = (gameState.priceHistory && gameState.priceHistory[0]) 
-                    ? gameState.priceHistory[0] 
-                    : { flour: 10000, oil: 10000, wood: 10000, coke: 10000 };
-                    
+                const firstPrices = gameState.priceHistory && gameState.priceHistory[0] ? gameState.priceHistory[0] : { flour: 10000, oil: 10000, wood: 10000, coke: 10000 };
                 await fb.updateDoc(fb.doc(db, 'investment_game', 'state', 'public', gameDocId), {
-                    phase: 'investment', 
-                    currentDayIdx: 0, 
-                    timerStart: Date.now(), 
-                    timerDuration: DAY_TIME_LIMIT * 7, 
+                    phase: 'investment',
+                    currentDayIdx: 0,
+                    timerStart: Date.now(),
+                    timerDuration: DAY_TIME_LIMIT * 7,
                     currentPrices: firstPrices
                 });
             };
@@ -306,7 +307,7 @@
 
                 await fb.updateDoc(fb.doc(fb.getFirestore(), 'investment_game', 'teams', 'entries', role), {
                     lastRoundCorrect: isCorrect, solvedRounds: fb.arrayUnion(gameState.round),
-                    hints: fb.arrayUnion({ type: isCorrect ? 'A' : 'B', text: hintText, targetDay: DAYS[nextDayIdx % 7] })
+                    hints: fb.arrayUnion({ type: isCorrect ? 'A' : 'B', text: hintText, targetDay: DAYS[nextDayIdx % 7], used: false })
                 });
             };
 
@@ -319,7 +320,7 @@
                 });
             };
 
-            if (loading) return <div className="h-screen flex items-center justify-center font-bold text-slate-500 animate-pulse">CONNECTING...</div>;
+            if (loading) return <div className="h-screen flex items-center justify-center font-bold text-slate-500 animate-pulse">SYSTEM INITIALIZING...</div>;
 
             if (!role) return (
                 <div className="h-screen flex items-center justify-center p-4">
@@ -335,7 +336,6 @@
                             <div className="bg-slate-900 p-8 rounded-3xl w-80 shadow-2xl border border-slate-800">
                                 <input type="password" placeholder="PASSWORD" value={adminPwInput} onChange={e => setAdminPwInput(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl mb-4 text-center text-xl font-bold" />
                                 <button onClick={() => { if(adminPwInput===ADMIN_PASSWORD) setRole('admin'); setShowAdminLogin(false); }} className="w-full bg-blue-600 py-4 rounded-xl font-bold">확인</button>
-                                <button onClick={() => setShowAdminLogin(false)} className="w-full mt-2 text-slate-500 text-xs py-2">취소</button>
                             </div>
                         </div>
                     )}
@@ -344,48 +344,33 @@
 
             return (
                 <div className="min-h-screen flex flex-col">
-                    <header className="bg-slate-900/80 backdrop-blur-md border-b border-slate-800 p-4 sticky top-0 z-50 flex justify-between items-center shadow-lg">
+                    <header className="bg-slate-900/80 backdrop-blur-md border-b border-slate-800 p-4 sticky top-0 z-50 flex justify-between items-center">
                         <div className="flex items-center gap-3">
                             <div className="bg-blue-600 p-2 rounded-xl"><SafeIcon name="Coins" size={20}/></div>
                             <div>
                                 <h2 className="font-bold text-sm">연립방정식 투자 경연대회</h2>
-                                <p className="text-[10px] text-blue-500 font-bold uppercase">{role === 'admin' ? 'ADMIN PANEL' : myTeamData?.teamName}</p>
+                                <p className="text-[10px] text-blue-500 font-bold uppercase">{role === 'admin' ? 'ADMIN' : myTeamData?.teamName}</p>
                             </div>
                         </div>
-                        <div className="flex items-center gap-4">
-                            <button onClick={() => setIsMuted(!isMuted)} className="p-2 hover:bg-slate-800 rounded-full transition-colors border border-slate-800">
-                                {isMuted ? <VolumeX size={20} className="text-rose-500" /> : <Volume2 size={20} className="text-emerald-500" />}
-                            </button>
-                            {gameState?.timerStart && (
-                                <div className="bg-slate-950 px-4 py-2 rounded-2xl font-mono text-xl border border-slate-800 text-blue-400 flex items-center gap-2 shadow-inner">
-                                    <span className="text-xs text-slate-500 font-sans mr-1">{gameState.phase === 'investment' ? DAYS[gameState.currentDayIdx] : ''}</span>
-                                    <SafeIcon name="Timer" size={18} className="animate-pulse" /> 
-                                    {gameState.phase === 'investment' ? formatTime(timeLeft % 60) : formatTime(timeLeft)}
-                                </div>
-                            )}
-                        </div>
+                        {gameState?.timerStart && (
+                            <div className="bg-slate-950 px-4 py-2 rounded-2xl font-mono text-xl border border-slate-800 text-blue-400 flex items-center gap-2">
+                                <span className="text-xs text-slate-500 font-sans mr-1">{gameState.phase === 'investment' ? DAYS[gameState.currentDayIdx] : ''}</span>
+                                <SafeIcon name="Timer" size={18} className="animate-pulse" /> 
+                                {gameState.phase === 'investment' ? formatTime(timeLeft % 60) : formatTime(timeLeft)}
+                            </div>
+                        )}
                     </header>
 
-                    <main className="flex-1 p-4 max-w-5xl mx-auto w-full fade-in pb-20">
+                    <main className="flex-1 p-4 max-w-5xl mx-auto w-full fade-in">
                         {role === 'admin' ? (
                             <AdminUI 
-                                gameState={gameState} 
-                                allTeams={allTeams} 
-                                startNextRound={startNextRound} 
-                                startInvestment={startInvestment} 
-                                resetGame={resetGame} 
-                                fb={fb} 
+                                gameState={gameState} allTeams={allTeams} startNextRound={startNextRound} 
+                                startInvestment={startInvestment} resetGame={resetGame} fb={fb} 
                             />
                         ) : (
                             <TeamUI 
-                                gameState={gameState} 
-                                role={role} 
-                                myTeamData={myTeamData} 
-                                allTeams={allTeams} 
-                                submitPassword={submitPassword} 
-                                trade={trade} 
-                                timeLeft={timeLeft} 
-                                fb={fb} 
+                                gameState={gameState} role={role} myTeamData={myTeamData} allTeams={allTeams}
+                                submitPassword={submitPassword} trade={trade} timeLeft={timeLeft} fb={fb}
                             />
                         )}
                     </main>
@@ -394,58 +379,57 @@
         }
 
         function AdminUI({ gameState, allTeams, startNextRound, startInvestment, resetGame, fb }) {
+            const currentPrices = gameState?.currentPrices || (gameState?.priceHistory?.[gameState?.currentDayIdx || 0]) || { flour: 10000, oil: 10000, wood: 10000, coke: 10000 };
+            
             return (
                 <div className="space-y-6">
                     <section className="bg-slate-900 p-6 rounded-3xl border border-slate-800 shadow-xl">
-                        <h3 className="text-xs font-bold text-blue-400 mb-6 uppercase tracking-widest flex items-center gap-2"><Play size={16}/> Command Center</h3>
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-xs font-bold text-blue-400 uppercase tracking-widest">Game Management</h3>
+                            {gameState?.phase === 'investment' && <span className="text-emerald-400 font-bold text-sm animate-pulse">LIVE MARKET ACTIVE - {DAYS[gameState.currentDayIdx]}</span>}
+                        </div>
                         <div className="grid grid-cols-2 gap-4">
-                            <button onClick={startNextRound} disabled={gameState?.round >= 5 || gameState?.phase === 'password'} className="bg-blue-600 hover:bg-blue-500 py-4 rounded-2xl font-bold shadow-lg disabled:opacity-50 transition-all">
+                            <button onClick={startNextRound} disabled={gameState?.round >= 5} className="bg-blue-600 py-4 rounded-2xl font-bold shadow-lg disabled:opacity-50 hover:bg-blue-500 transition-colors">
                                 {gameState?.round >= 5 ? "미션 종료" : `미션 ${(gameState?.round || 0) + 1} 시작`}
                             </button>
-                            <button onClick={startInvestment} disabled={gameState?.phase === 'investment' || gameState?.round < 1} className="bg-emerald-600 hover:bg-emerald-500 py-4 rounded-2xl font-bold shadow-lg disabled:opacity-50 transition-all">
-                                투자 경연 시작
-                            </button>
+                            <button onClick={startInvestment} disabled={gameState?.phase === 'investment'} className="bg-emerald-600 py-4 rounded-2xl font-bold shadow-lg hover:bg-emerald-500 transition-colors disabled:opacity-50">투자 시작</button>
                         </div>
-                        <div className="mt-6 flex justify-between items-center px-1">
-                            <div className="flex gap-4">
-                                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-tighter">Phase: {gameState?.phase}</span>
-                                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-tighter">Round: {gameState?.round}/5</span>
-                            </div>
-                            <button onClick={resetGame} className="text-[10px] text-rose-500 font-black uppercase tracking-widest hover:underline">Global Reset</button>
-                        </div>
+                        <button onClick={resetGame} className="mt-4 text-[10px] text-rose-500 font-black uppercase tracking-widest w-full text-right hover:text-rose-400">System Reset</button>
                     </section>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="bg-slate-900 p-6 rounded-3xl border border-slate-800">
-                            <h3 className="text-xs font-bold text-yellow-500 mb-4 uppercase flex items-center gap-2"><Users size={16}/> Team Submission Status</h3>
-                            <div className="space-y-2">
-                                {allTeams.sort((a,b) => a.id.localeCompare(b.id)).map(t => {
-                                    const hasSolved = t.solvedRounds?.includes(gameState?.round);
-                                    return (
-                                        <div key={t.id} className="flex justify-between items-center p-3 bg-slate-800/30 rounded-xl border border-slate-800">
-                                            <div className="flex items-center gap-3">
-                                                <div className={`w-2 h-2 rounded-full ${hasSolved ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-slate-700'}`}></div>
-                                                <span className="text-sm font-bold text-slate-300">{t.teamName}</span>
-                                            </div>
-                                            <div className="flex items-center gap-3">
-                                                {hasSolved && <CheckCircle2 size={16} className="text-emerald-500" />}
-                                                <span className="text-emerald-400 font-mono text-xs">{t.budget?.toLocaleString()}원</span>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                        <div className="bg-slate-900 p-6 rounded-3xl border border-slate-800">
-                            <h3 className="text-xs font-bold text-blue-400 mb-4 uppercase flex items-center gap-2"><LayoutDashboard size={16}/> Current Market Snapshot</h3>
+                        {/* Market Prices Section - Prominent in Admin View as requested */}
+                        <div className="bg-slate-900 p-6 rounded-3xl border border-slate-800 shadow-xl">
+                            <h3 className="text-xs font-bold text-blue-400 mb-4 uppercase flex items-center gap-2">
+                                <SafeIcon name="Package" size={14}/> Current Market Prices
+                            </h3>
                             <div className="grid grid-cols-2 gap-3">
                                 {ASSETS.map(a => (
-                                    <div key={a.id} className="bg-slate-800/30 p-4 rounded-xl border border-slate-800 text-center">
-                                        <div className="text-2xl mb-1">{a.icon}</div>
-                                        <div className="text-lg font-black font-mono">{(gameState?.currentPrices?.[a.id] || 0).toLocaleString()}</div>
-                                        <div className="text-[10px] text-slate-500 uppercase font-bold mt-1">{a.name}</div>
+                                    <div key={a.id} className="bg-slate-800/60 p-4 rounded-2xl border border-slate-700/50 flex flex-col items-center">
+                                        <div className="text-3xl mb-1">{a.icon}</div>
+                                        <div className="text-[10px] text-slate-400 font-bold mb-1">{a.name}</div>
+                                        <div className="text-xl font-black font-mono text-white">{(currentPrices[a.id] || 0).toLocaleString()}원</div>
                                     </div>
                                 ))}
+                            </div>
+                        </div>
+
+                        {/* Live Ranking Section */}
+                        <div className="bg-slate-900 p-6 rounded-3xl border border-slate-800 shadow-xl">
+                            <h3 className="text-xs font-bold text-yellow-500 mb-4 uppercase flex items-center gap-2">
+                                <SafeIcon name="Trophy" size={14}/> Live Ranking
+                            </h3>
+                            <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
+                                {[...allTeams].sort((a,b) => {
+                                    const getWorth = (t) => (t.budget || 0) + ASSETS.reduce((acc, ast) => acc + (t.portfolio?.[ast.id] || 0) * (currentPrices[ast.id] || 10000), 0);
+                                    return getWorth(b) - getWorth(a);
+                                }).map((t, i) => (
+                                    <div key={t.id} className="flex justify-between p-3 bg-slate-800/40 rounded-xl border border-slate-800 text-sm hover:bg-slate-800/60 transition-colors">
+                                        <span className="font-bold">{i+1}. {t.teamName}</span>
+                                        <span className="text-emerald-400 font-mono font-bold">{( (t.budget || 0) + ASSETS.reduce((acc, ast) => acc + (t.portfolio?.[ast.id] || 0) * (currentPrices[ast.id] || 10000), 0) ).toLocaleString()}원</span>
+                                    </div>
+                                ))}
+                                {allTeams.length === 0 && <div className="text-center py-10 text-slate-500 italic text-sm">참가 조가 없습니다.</div>}
                             </div>
                         </div>
                     </div>
@@ -469,7 +453,9 @@
             if (!gameState || gameState.phase === 'lobby') {
                 return (
                     <div className="h-full py-20 flex flex-col items-center gap-6 text-center fade-in">
-                        <RefreshCw size={64} className="animate-spin-slow text-blue-500" />
+                        <div className="bg-blue-600/10 p-8 rounded-full animate-pulse border border-blue-500/20">
+                            <SafeIcon name="RefreshCw" size={64} className="animate-spin-slow text-blue-500" />
+                        </div>
                         <h2 className="text-2xl font-black uppercase tracking-tighter">참가 완료</h2>
                         <p className="text-slate-500 text-sm max-w-[200px] leading-relaxed">관리자가 미션을 시작할 때까지 대기해 주세요.</p>
                     </div>
@@ -477,7 +463,9 @@
             }
 
             if (gameState.phase === 'investment' || gameState.phase === 'result') {
-                const currentPrices = gameState.currentPrices || { flour: 10000, oil: 10000, wood: 10000, coke: 10000 };
+                // Ensure prices are shown correctly immediately by falling back to history if currentPrices is missing
+                const currentPrices = gameState.currentPrices || (gameState.priceHistory && gameState.priceHistory[gameState.currentDayIdx]) || { flour: 10000, oil: 10000, wood: 10000, coke: 10000 };
+                
                 const worth = (myTeamData?.budget || 0) + ASSETS.reduce((acc, a) => acc + (myTeamData?.portfolio?.[a.id] || 0) * (currentPrices[a.id] || 0), 0);
                 const sorted = [...allTeams].sort((a,b) => {
                     const getW = (t) => (t.budget || 0) + ASSETS.reduce((acc, ast) => acc + (t.portfolio?.[ast.id] || 0) * (currentPrices[ast.id] || 10000), 0);
@@ -490,25 +478,26 @@
 
                 return (
                     <div className="relative">
+                        {}
                         <div className={`blackout-overlay ${isBlackout ? 'active' : ''}`}>
                             <div className="text-center">
                                 <h1 className="text-4xl font-black text-white mb-2">{DAYS[gameState.currentDayIdx]}이 되었습니다</h1>
-                                <p className="text-blue-400 font-bold tracking-widest animate-pulse">시장을 분석하십시오...</p>
+                                <p className="text-blue-400 font-bold tracking-widest animate-pulse uppercase">Market is Refreshing...</p>
                             </div>
                         </div>
 
                         {selectedHint && (
                             <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[200] flex items-center justify-center p-6" onClick={() => setSelectedHint(null)}>
-                                <div className="bg-slate-900 border-2 border-amber-500 p-8 rounded-3xl max-w-sm w-full shadow-2xl fade-in" onClick={e => e.stopPropagation()}>
+                                <div className="bg-slate-900 border-2 border-amber-500 p-8 rounded-3xl max-w-sm w-full shadow-[0_0_50px_rgba(245,158,11,0.3)] fade-in" onClick={e => e.stopPropagation()}>
                                     <div className="flex justify-between items-center mb-6">
                                         <h4 className="font-black text-amber-500 text-xl uppercase italic">Intelligence Report</h4>
-                                        <button onClick={() => setSelectedHint(null)} className="text-slate-500 hover:text-white"><X size={24}/></button>
+                                        <button onClick={() => setSelectedHint(null)} className="text-slate-500 hover:text-white"><SafeIcon name="X" size={24}/></button>
                                     </div>
                                     <div className="bg-slate-950 p-6 rounded-2xl border border-slate-800 text-center">
                                         <p className="text-xs text-slate-500 mb-4 font-bold uppercase tracking-widest">{selectedHint.targetDay} 정보</p>
                                         <p className="text-lg font-bold text-slate-100 leading-relaxed whitespace-pre-line">{selectedHint.text}</p>
                                     </div>
-                                    <button onClick={() => setSelectedHint(null)} className="w-full mt-8 bg-amber-600 py-4 rounded-xl font-bold">확인 완료</button>
+                                    <button onClick={() => setSelectedHint(null)} className="w-full mt-8 bg-amber-600 py-4 rounded-xl font-bold hover:bg-amber-500 transition-colors">확인 완료</button>
                                 </div>
                             </div>
                         )}
@@ -517,42 +506,40 @@
                             <div className="lg:col-span-2 space-y-6">
                                 <div className="bg-slate-900 p-6 rounded-[2rem] border border-slate-800 shadow-xl overflow-hidden relative">
                                     <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-emerald-500"></div>
-                                    <h3 className="font-bold text-emerald-400 mb-6 uppercase text-[10px] tracking-widest flex items-center gap-2"><TrendingUp size={14}/> {DAYS[gameState.currentDayIdx]} Market</h3>
+                                    <h3 className="font-bold text-emerald-400 mb-6 uppercase text-[10px] tracking-widest flex items-center gap-2"><SafeIcon name="TrendingUp" size={14}/> {DAYS[gameState.currentDayIdx]} Market</h3>
                                     <div className="grid grid-cols-2 gap-4">
                                         {ASSETS.map(a => (
-                                            <div key={a.id} className="bg-slate-800/40 p-4 rounded-2xl border border-slate-800/60">
+                                            <div key={a.id} className="bg-slate-800/40 p-4 rounded-2xl border border-slate-800/60 transition-all hover:bg-slate-800/80">
                                                 <div className="flex justify-between items-start mb-4">
-                                                    <div className="flex gap-2 items-center"><span className="text-2xl">{a.icon}</span><span className="font-bold">{a.name}</span></div>
+                                                    <div className="flex gap-2 items-center"><span className="text-2xl">{a.icon}</span><span className="font-bold text-white">{a.name}</span></div>
                                                     <div className="text-[10px] text-blue-400 font-bold uppercase">보유: {myTeamData?.portfolio?.[a.id] || 0}</div>
                                                 </div>
                                                 <div className="flex justify-between items-center">
-                                                    <div className="font-mono font-black text-xl">{(currentPrices[a.id] || 0).toLocaleString()}원</div>
+                                                    <div className="font-mono font-black text-xl text-white">{(currentPrices[a.id] || 0).toLocaleString()}원</div>
                                                     <div className="flex gap-1">
-                                                        <button onClick={() => trade(a.id, 1)} className="bg-emerald-600 px-3 py-1.5 rounded-lg text-[10px] font-black">BUY</button>
-                                                        <button onClick={() => trade(a.id, -1)} className="bg-rose-600 px-3 py-1.5 rounded-lg text-[10px] font-black">SELL</button>
+                                                        <button onClick={() => trade(a.id, 1)} className="bg-emerald-600 px-3 py-1.5 rounded-lg text-[10px] font-black hover:bg-emerald-500 transition-colors">BUY</button>
+                                                        <button onClick={() => trade(a.id, -1)} className="bg-rose-600 px-3 py-1.5 rounded-lg text-[10px] font-black hover:bg-rose-500 transition-colors">SELL</button>
                                                     </div>
                                                 </div>
                                             </div>
                                         ))}
                                     </div>
                                 </div>
-
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="hint-card hint-card-a p-6 rounded-2xl shadow-xl flex flex-col items-center text-center text-white" 
                                          onClick={() => aHints.length > 0 && setSelectedHint(aHints[aHints.length-1])}>
-                                        <div className="bg-white/20 p-3 rounded-xl mb-3"><Trophy size={24}/></div>
+                                        <div className="bg-white/20 p-3 rounded-xl mb-3"><SafeIcon name="Trophy" size={24}/></div>
                                         <h4 className="font-black text-sm uppercase mb-1">A급 힌트</h4>
                                         <p className="text-[10px] opacity-80">{aHints.length}개 보유 중</p>
                                     </div>
                                     <div className="hint-card hint-card-b p-6 rounded-2xl shadow-xl flex flex-col items-center text-center text-white"
                                          onClick={() => bHints.length > 0 && setSelectedHint(bHints[bHints.length-1])}>
-                                        <div className="bg-white/20 p-3 rounded-xl mb-3"><FileText size={24}/></div>
+                                        <div className="bg-white/20 p-3 rounded-xl mb-3"><SafeIcon name="FileText" size={24}/></div>
                                         <h4 className="font-black text-sm uppercase mb-1">B급 힌트</h4>
                                         <p className="text-[10px] opacity-80">{bHints.length}개 보유 중</p>
                                     </div>
                                 </div>
                             </div>
-
                             <div className="space-y-6">
                                 <div className="bg-slate-900 p-8 rounded-[2rem] border border-slate-800 shadow-2xl">
                                     <p className="text-[10px] text-slate-500 uppercase font-black mb-2">Total Assets</p>
@@ -561,7 +548,7 @@
                                         <p className="text-[10px] text-slate-500 uppercase font-black mb-1">Cash</p>
                                         <p className="text-2xl font-mono font-black text-emerald-400">{(myTeamData?.budget || 0).toLocaleString()}원</p>
                                     </div>
-                                    {isWinner && <div className="mt-6 p-4 bg-yellow-500/20 border border-yellow-500/30 rounded-2xl text-center text-yellow-500 font-black animate-bounce shadow-lg">🏆 최종 우승! 축하합니다! 🏆</div>}
+                                    {isWinner && <div className="mt-6 p-4 bg-yellow-500/20 border border-yellow-500/30 rounded-2xl text-center text-yellow-500 font-black animate-bounce">🎉 최종 우승! 축하합니다! 🎉</div>}
                                 </div>
                                 {gameState.phase === 'result' && !isWinner && (
                                     <div className="bg-slate-900/50 p-6 rounded-2xl border border-slate-800 text-center">
@@ -589,8 +576,8 @@
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
                                 {gameState.questions.map((q, idx) => (
                                     <div key={idx} className={`bg-slate-950 p-6 rounded-3xl border-2 ${idx===0?'border-emerald-500/50':idx===1?'border-yellow-500/50':'border-rose-500/50'}`}>
-                                        <div className="text-[10px] font-black opacity-40 uppercase mb-2 tracking-widest">Question {idx+1}</div>
-                                        <div className="math-font text-sm font-bold space-y-1">{q.eqs.map((e, i) => <div key={i}>{e}</div>)}</div>
+                                        <div className="text-[10px] font-black opacity-40 uppercase mb-2">Q{idx+1}</div>
+                                        <div className="math-font text-sm font-bold space-y-1 text-white">{q.eqs.map((e, i) => <div key={i}>{e}</div>)}</div>
                                     </div>
                                 ))}
                             </div>
@@ -599,14 +586,14 @@
                                     <div className="grid grid-cols-3 gap-4">
                                         {[0,1,2].map(i => (
                                             <div key={i} className="flex gap-1">
-                                                <input type="number" placeholder="X" value={input[i*2]} onChange={e=> {let n=[...input]; n[i*2]=e.target.value; setInput(n)}} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl text-center text-xl font-bold focus:border-blue-500 outline-none transition-all" />
-                                                <input type="number" placeholder="Y" value={input[i*2+1]} onChange={e=> {let n=[...input]; n[i*2+1]=e.target.value; setInput(n)}} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl text-center text-xl font-bold focus:border-blue-500 outline-none transition-all" />
+                                                <input type="number" placeholder="X" value={input[i*2]} onChange={e=> {let n=[...input]; n[i*2]=e.target.value; setInput(n)}} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl text-center text-xl font-bold focus:border-blue-500 outline-none transition-all text-white" />
+                                                <input type="number" placeholder="Y" value={input[i*2+1]} onChange={e=> {let n=[...input]; n[i*2+1]=e.target.value; setInput(n)}} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl text-center text-xl font-bold focus:border-blue-500 outline-none transition-all text-white" />
                                             </div>
                                         ))}
                                     </div>
-                                    <button onClick={() => submitPassword(input)} className="w-full bg-blue-600 hover:bg-blue-500 py-4 rounded-2xl font-bold shadow-xl transition-all active:scale-[0.98]">해독 정보 전송</button>
+                                    <button onClick={() => submitPassword(input)} className="w-full bg-blue-600 hover:bg-blue-500 py-4 rounded-2xl font-bold shadow-xl active:scale-[0.98] transition-all">해독 정보 전송</button>
                                 </div>
-                            ) : <div className="p-10 bg-blue-600/10 border border-blue-500/30 rounded-3xl text-center text-blue-400 font-black animate-pulse">해독 완료. 다른 팀을 기다리는 중...</div>}
+                            ) : <div className="p-10 bg-blue-600/10 border border-blue-500/30 rounded-3xl text-center text-blue-400 font-black">해독 완료. 다른 팀을 기다리는 중...</div>}
                         </div>
                     </div>
                 );
@@ -618,15 +605,15 @@
                 return (
                     <div className="max-w-md mx-auto fade-in">
                         <div className="bg-slate-900 p-8 rounded-[2.5rem] border border-slate-800 text-center shadow-2xl">
-                            <div className={`w-20 h-20 rounded-3xl mx-auto mb-6 flex items-center justify-center ${correct ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
+                            <div className={`w-20 h-20 rounded-3xl mx-auto mb-6 flex items-center justify-center ${correct ? 'bg-emerald-500/20 text-emerald-400 shadow-[0_0_20px_rgba(52,211,153,0.2)]' : 'bg-rose-500/20 text-rose-400 shadow-[0_0_20px_rgba(244,63,94,0.2)]'}`}>
                                 <SafeIcon name={correct ? "Unlock" : "Lock"} size={40} />
                             </div>
-                            <h3 className="text-2xl font-black mb-6 uppercase tracking-widest">{correct ? "MISSION SUCCESS" : "MISSION FAILURE"}</h3>
+                            <h3 className="text-2xl font-black mb-6 uppercase text-white">{correct ? "Success" : "Failure"}</h3>
                             <p className="bg-slate-950 p-6 rounded-2xl border border-slate-800 text-sm mb-8 font-bold text-slate-300">
                                 {correct ? "A급 힌트를 하나 획득하셨습니다." : "B급 힌트를 하나 획득하셨습니다."}
                             </p>
                             {!ready ? (
-                                <button onClick={() => fb.updateDoc(fb.doc(fb.getFirestore(), 'investment_game', 'state', 'public', gameDocId), { readyTeams: fb.arrayUnion(role) })} className="w-full bg-blue-600 py-4 rounded-2xl font-bold shadow-xl hover:bg-blue-500 transition-all">
+                                <button onClick={() => fb.updateDoc(fb.doc(fb.getFirestore(), 'investment_game', 'state', 'public', gameDocId), { readyTeams: fb.arrayUnion(role) })} className="w-full bg-blue-600 hover:bg-blue-500 py-4 rounded-2xl font-bold transition-colors">
                                     {gameState.round === 5 ? "투자 경연대회 참가" : "다음 라운드 준비"}
                                 </button>
                             ) : <div className="text-emerald-500 font-black animate-pulse uppercase tracking-widest text-sm">대기 중...</div>}
