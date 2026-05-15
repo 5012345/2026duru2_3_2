@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>연립방정식 투자 경연대회</title>
-    <!-- 외부 아이콘 라이브러리(Lucide) 삭제: 안정성 100% 확보 -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
@@ -74,11 +73,12 @@
         ];
         const DAYS = ["월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일"];
 
-        // 자체 내장 아이콘 시스템 (외부 오류 100% 차단)
         const emojiMap = {
             Coins: "🪙", Timer: "⏳", Lock: "🔒", Unlock: "🔓",
             RefreshCw: "🔄", TrendingUp: "📊", Trophy: "🏆",
-            FileText: "📝", X: "✖️", AlertCircle: "⚠️"
+            FileText: "📝", X: "✖️", AlertCircle: "⚠️",
+            Volume2: "🔊", VolumeX: "🔇", History: "📜", Check: "✅",
+            Music: "🎵"
         };
         const SafeIcon = ({ name, size = 18, className = "" }) => {
             return <span className={className} style={{ fontSize: size, lineHeight: 1 }}>{emojiMap[name] || "💠"}</span>;
@@ -155,6 +155,35 @@
             const [showAdminLogin, setShowAdminLogin] = useState(false);
             const [adminPwInput, setAdminPwInput] = useState("");
             const [errorMsg, setErrorMsg] = useState(null); 
+
+            // BGM 시스템
+            const [audio1] = useState(() => typeof window !== 'undefined' ? new Audio('bgm.mp3') : null);
+            const [audio2] = useState(() => typeof window !== 'undefined' ? new Audio('bgm2.mp3') : null);
+            const [isBgmOn, setIsBgmOn] = useState(false);
+
+            useEffect(() => {
+                if (audio1) audio1.loop = true;
+                if (audio2) audio2.loop = true;
+            }, [audio1, audio2]);
+
+            useEffect(() => {
+                if (!audio1 || !audio2) return;
+                
+                if (!isBgmOn) {
+                    audio1.pause();
+                    audio2.pause();
+                    return;
+                }
+
+                const phase = gameState?.phase;
+                if (phase === 'investment' || phase === 'result') {
+                    audio1.pause();
+                    audio2.play().catch(e => console.log('BGM 재생 에러:', e));
+                } else {
+                    audio2.pause();
+                    audio1.play().catch(e => console.log('BGM 재생 에러:', e));
+                }
+            }, [isBgmOn, gameState?.phase, audio1, audio2]);
 
             useEffect(() => {
                 const interval = setInterval(() => {
@@ -310,7 +339,7 @@
                 if (!snap.exists()) {
                     await fb.setDoc(ref, {
                         teamName: `${n}조`, budget: 100000, portfolio: { flour: 0, oil: 0, wood: 0, coke: 0 },
-                        hints: [], solvedRounds: []
+                        hints: [], usedHints: [], solvedRounds: []
                     });
                 }
                 setRole(id);
@@ -318,19 +347,12 @@
 
             const submitPassword = async (input) => {
                 const isCorrect = input.map(Number).join(',') === (gameState.answers || []).join(',');
-                const nextDayIdx = Math.min(7, (gameState.round || 1));
-                const prices = gameState.priceHistory[nextDayIdx];
-                let hintText = "";
-                if (isCorrect) {
-                    ASSETS.forEach(a => hintText += `${a.name}:${prices[a.id].toLocaleString()}원 \n`);
-                } else {
-                    const shuf = [...ASSETS].sort(() => 0.5 - Math.random());
-                    hintText += `${shuf[0].name}:${prices[shuf[0].id].toLocaleString()}원\n${shuf[1].name}:${prices[shuf[1].id].toLocaleString()}원`;
-                }
+                // 소모형 힌트용 고유 아이디 생성
+                const newHint = { type: isCorrect ? 'A' : 'B', id: Date.now().toString() + Math.random().toString() };
 
                 await fb.updateDoc(fb.doc(fb.getFirestore(), 'investment_game', 'teams', 'entries', role), {
                     lastRoundCorrect: isCorrect, solvedRounds: fb.arrayUnion(gameState.round),
-                    hints: fb.arrayUnion({ type: isCorrect ? 'A' : 'B', text: hintText, targetDay: DAYS[nextDayIdx % 7], used: false })
+                    hints: fb.arrayUnion(newHint)
                 });
             };
 
@@ -385,6 +407,12 @@
                                 <p className="text-[10px] text-blue-500 font-bold uppercase">{role === 'admin' ? 'ADMIN' : myTeamData?.teamName}</p>
                             </div>
                         </div>
+
+                        {/* 상단 중앙 BGM 제어 버튼 */}
+                        <button onClick={() => setIsBgmOn(!isBgmOn)} className={`flex items-center gap-2 px-4 py-1.5 rounded-full border text-xs font-bold transition-all shadow-lg ${isBgmOn ? 'bg-amber-500/20 border-amber-500 text-amber-500' : 'bg-slate-800 border-slate-700 text-slate-500'}`}>
+                            <SafeIcon name={isBgmOn ? "Volume2" : "VolumeX"} size={16}/> {isBgmOn ? "BGM 켜짐" : "BGM 꺼짐"}
+                        </button>
+
                         {gameState?.timerStart && (
                             <div className="bg-slate-950 px-4 py-2 rounded-2xl font-mono text-xl border border-slate-800 text-blue-400 flex items-center gap-2">
                                 <span className="text-xs text-slate-500 font-sans mr-1">{gameState.phase === 'investment' ? DAYS[gameState.currentDayIdx] : ''}</span>
@@ -407,6 +435,27 @@
                                     </div>
                                     <button onClick={resetGame} className="mt-4 text-[10px] text-rose-500 font-black uppercase tracking-widest w-full text-right">System Reset</button>
                                 </section>
+
+                                {/* 관리자용 실시간 비밀번호 제출 현황판 (Phase 1 전용) */}
+                                {gameState?.phase === 'password' && (
+                                    <div className="bg-slate-900 p-6 rounded-3xl border border-slate-800">
+                                        <h3 className="text-xs font-bold text-emerald-400 mb-4 uppercase flex items-center gap-2">
+                                            <SafeIcon name="Check" size={16}/> {gameState.round}라운드 비밀번호 제출 현황
+                                        </h3>
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                                            {allTeams.map(t => {
+                                                const isSolved = t.solvedRounds?.includes(gameState.round);
+                                                return (
+                                                    <div key={t.id} className={`p-4 rounded-2xl border flex flex-col items-center text-center gap-2 transition-all shadow-md ${isSolved ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400' : 'bg-slate-800 border-slate-700 text-slate-500'}`}>
+                                                        <SafeIcon name={isSolved ? "Unlock" : "Lock"} size={24}/>
+                                                        <span className="text-sm font-black">{t.teamName}</span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <div className="bg-slate-900 p-6 rounded-3xl border border-slate-800">
                                         <h3 className="text-xs font-bold text-yellow-500 mb-4 uppercase">Live Ranking</h3>
@@ -449,6 +498,10 @@
             const [input, setInput] = useState(['','','','','','']);
             const [isBlackout, setIsBlackout] = useState(false);
             const [selectedHint, setSelectedHint] = useState(null);
+            
+            // 새로운 힌트 제어용 State
+            const [confirmHintType, setConfirmHintType] = useState(null);
+            const [showHistory, setShowHistory] = useState(false);
 
             useEffect(() => {
                 if (gameState?.phase === 'investment') {
@@ -458,11 +511,47 @@
                 }
             }, [gameState?.currentDayIdx]);
 
+            // 소모성 힌트 사용 처리 로직
+            const handleUseHint = async (type) => {
+                const available = myTeamData?.hints?.filter(h => h.type === type) || [];
+                if (available.length === 0) return;
+
+                const hintToRemove = available[0];
+                const nextDayIdx = gameState.currentDayIdx + 1;
+                let hintText = "";
+                let tDay = "";
+
+                if (nextDayIdx > 6) {
+                    hintText = "대회가 곧 종료됩니다. 내일의 시장 변동 정보가 없습니다.";
+                    tDay = "대회 종료 임박";
+                } else {
+                    tDay = DAYS[nextDayIdx];
+                    const prices = gameState.priceHistory[nextDayIdx];
+                    if (type === 'A') {
+                        ASSETS.forEach(a => hintText += `${a.name}: ${prices[a.id].toLocaleString()}원\n`);
+                    } else {
+                        const shuf = [...ASSETS].sort(() => 0.5 - Math.random());
+                        hintText += `${shuf[0].name}: ${prices[shuf[0].id].toLocaleString()}원\n${shuf[1].name}: ${prices[shuf[1].id].toLocaleString()}원`;
+                    }
+                }
+
+                const newUsedHint = { type, text: hintText, targetDay: tDay, id: Date.now().toString() };
+                const newHints = myTeamData.hints.filter(h => h.id !== hintToRemove.id);
+
+                await fb.updateDoc(fb.doc(fb.getFirestore(), 'investment_game', 'teams', 'entries', role), {
+                    hints: newHints,
+                    usedHints: fb.arrayUnion(newUsedHint)
+                });
+
+                setConfirmHintType(null);
+                setSelectedHint(newUsedHint); // 모달창 바로 띄우기
+            };
+
             if (!gameState || gameState.phase === 'lobby') {
                 return (
                     <div className="h-full py-20 flex flex-col items-center gap-6 text-center fade-in">
                         <div className="bg-blue-600/10 p-8 rounded-full animate-pulse border border-blue-500/20">
-                            <SafeIcon name="RefreshCw" size={64} className="animate-spin-slow text-blue-500" />
+                            <SafeIcon name="RefreshCw" size={64} className="text-blue-500" />
                         </div>
                         <h2 className="text-2xl font-black tracking-tighter">참가 완료.</h2>
                         <p className="text-slate-500 text-sm leading-relaxed">관리자의 시작 신호를 기다리세요.</p>
@@ -491,6 +580,46 @@
                             </div>
                         </div>
 
+                        {/* 힌트 열람 기록 모달창 */}
+                        {showHistory && (
+                            <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[200] p-6 overflow-y-auto" onClick={() => setShowHistory(false)}>
+                                <div className="max-w-lg mx-auto bg-slate-900 border border-slate-700 p-8 rounded-3xl mt-10 shadow-2xl fade-in" onClick={e => e.stopPropagation()}>
+                                    <div className="flex justify-between items-center mb-6 border-b border-slate-800 pb-4">
+                                        <h3 className="font-black text-xl flex items-center gap-2 text-white"><SafeIcon name="History"/> 힌트 열람 기록</h3>
+                                        <button onClick={() => setShowHistory(false)} className="text-slate-500 hover:text-rose-500 transition-colors"><SafeIcon name="X" size={24}/></button>
+                                    </div>
+                                    <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+                                        {!(myTeamData?.usedHints?.length) ? <p className="text-slate-500 text-center py-10 font-bold">사용된 힌트가 없습니다.</p> :
+                                            [...myTeamData.usedHints].reverse().map(h => (
+                                                <div key={h.id} className="bg-slate-950 p-5 rounded-2xl border border-slate-800">
+                                                    <p className={`text-xs mb-2 font-black inline-block px-2 py-1 rounded-md ${h.type === 'A' ? 'bg-amber-500/20 text-amber-500' : 'bg-slate-500/20 text-slate-300'}`}>[{h.type}급] {h.targetDay} 정보</p>
+                                                    <p className="text-sm font-bold whitespace-pre-line leading-relaxed text-slate-200">{h.text}</p>
+                                                </div>
+                                            ))
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 힌트 사용 확인 모달창 */}
+                        {confirmHintType && (
+                            <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[200] flex items-center justify-center p-6" onClick={() => setConfirmHintType(null)}>
+                                <div className="bg-slate-900 border-2 border-slate-700 p-8 rounded-3xl max-w-sm w-full text-center fade-in shadow-2xl" onClick={e => e.stopPropagation()}>
+                                    <SafeIcon name="AlertCircle" size={48} className={`mx-auto mb-6 ${confirmHintType === 'A' ? 'text-amber-500' : 'text-slate-400'}`} />
+                                    <h4 className="font-black text-2xl mb-2 text-white">{confirmHintType}급 힌트 사용</h4>
+                                    <p className="text-slate-400 text-sm mb-8 font-bold break-keep leading-relaxed">
+                                        {confirmHintType === 'A' ? '다음 요일의 모든 자원의 정보를 알려드릴까요?' : '다음 요일의 무작위 2개의 자원의 정보를 알려드릴까요?'}
+                                    </p>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <button onClick={() => setConfirmHintType(null)} className="bg-slate-800 py-4 rounded-xl font-bold hover:bg-slate-700 transition">아니오</button>
+                                        <button onClick={() => handleUseHint(confirmHintType)} className={`${confirmHintType === 'A' ? 'bg-amber-600 hover:bg-amber-500' : 'bg-slate-600 hover:bg-slate-500'} py-4 rounded-xl font-bold transition text-white`}>예 (사용)</button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 결과 출력 모달창 */}
                         {selectedHint && (
                             <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[200] flex items-center justify-center p-6" onClick={() => setSelectedHint(null)}>
                                 <div className="bg-slate-900 border-2 border-amber-500 p-8 rounded-3xl max-w-sm w-full shadow-[0_0_50px_rgba(245,158,11,0.3)] fade-in" onClick={e => e.stopPropagation()}>
@@ -502,7 +631,7 @@
                                         <p className="text-xs text-slate-500 mb-4 font-bold uppercase tracking-widest">{selectedHint.targetDay} 정보</p>
                                         <p className="text-lg font-bold text-slate-100 leading-relaxed whitespace-pre-line">{selectedHint.text}</p>
                                     </div>
-                                    <button onClick={() => setSelectedHint(null)} className="w-full mt-8 bg-amber-600 py-4 rounded-xl font-bold">확인 완료</button>
+                                    <button onClick={() => setSelectedHint(null)} className="w-full mt-8 bg-amber-600 hover:bg-amber-500 py-4 rounded-xl font-bold transition text-white">확인 완료</button>
                                 </div>
                             </div>
                         )}
@@ -511,7 +640,17 @@
                             <div className="lg:col-span-2 space-y-6">
                                 <div className="bg-slate-900 p-6 rounded-[2rem] border border-slate-800 shadow-xl overflow-hidden relative">
                                     <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-emerald-500"></div>
-                                    <h3 className="font-bold text-emerald-400 mb-6 uppercase text-[10px] tracking-widest flex items-center gap-2"><SafeIcon name="TrendingUp" size={14}/> {DAYS[gameState.currentDayIdx]} Market</h3>
+                                    
+                                    {/* 열람 기록 버튼 우측 상단 배치 */}
+                                    <div className="flex justify-between items-center mb-6">
+                                        <h3 className="font-bold text-emerald-400 uppercase text-[10px] tracking-widest flex items-center gap-2">
+                                            <SafeIcon name="TrendingUp" size={14}/> {DAYS[gameState.currentDayIdx]} Market
+                                        </h3>
+                                        <button onClick={() => setShowHistory(true)} className="bg-slate-800 px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-700 hover:bg-slate-700 transition-all flex items-center gap-1 shadow-md">
+                                            <SafeIcon name="History"/> 열람 기록
+                                        </button>
+                                    </div>
+
                                     <div className="grid grid-cols-2 gap-4">
                                         {ASSETS.map(a => (
                                             <div key={a.id} className="bg-slate-800/40 p-4 rounded-2xl border border-slate-800/60">
@@ -532,14 +671,14 @@
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-4">
-                                    <div className="hint-card hint-card-a p-6 rounded-2xl shadow-xl flex flex-col items-center text-center text-white" 
-                                         onClick={() => aHints.length > 0 && setSelectedHint(aHints[aHints.length-1])}>
+                                    <div className={`hint-card hint-card-a p-6 rounded-2xl shadow-xl flex flex-col items-center text-center text-white ${aHints.length === 0 ? 'opacity-50 grayscale cursor-not-allowed' : ''}`} 
+                                         onClick={() => aHints.length > 0 && setConfirmHintType('A')}>
                                         <div className="bg-white/20 p-3 rounded-xl mb-3"><SafeIcon name="Trophy" size={24}/></div>
                                         <h4 className="font-black text-sm uppercase mb-1">A급 힌트</h4>
                                         <p className="text-[10px] opacity-80">{aHints.length}개 보유 중</p>
                                     </div>
-                                    <div className="hint-card hint-card-b p-6 rounded-2xl shadow-xl flex flex-col items-center text-center text-white"
-                                         onClick={() => bHints.length > 0 && setSelectedHint(bHints[bHints.length-1])}>
+                                    <div className={`hint-card hint-card-b p-6 rounded-2xl shadow-xl flex flex-col items-center text-center text-white ${bHints.length === 0 ? 'opacity-50 grayscale cursor-not-allowed' : ''}`}
+                                         onClick={() => bHints.length > 0 && setConfirmHintType('B')}>
                                         <div className="bg-white/20 p-3 rounded-xl mb-3"><SafeIcon name="FileText" size={24}/></div>
                                         <h4 className="font-black text-sm uppercase mb-1">B급 힌트</h4>
                                         <p className="text-[10px] opacity-80">{bHints.length}개 보유 중</p>
