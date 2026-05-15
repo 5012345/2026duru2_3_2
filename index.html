@@ -402,7 +402,7 @@
                             <div className="bg-blue-600 p-2 rounded-xl"><SafeIcon name="Coins" size={20}/></div>
                             <div>
                                 <h2 className="font-bold text-sm">연립방정식 투자 경연대회</h2>
-                                <p className="text-[10px] text-blue-500 font-bold uppercase">{role === 'admin' ? 'ADMIN' : myTeamData?.teamName}</p>
+                                <p className="text-[10px] text-blue-500 font-bold uppercase">{role === 'admin' ? '관리자' : myTeamData?.teamName}</p>
                             </div>
                         </div>
 
@@ -463,14 +463,14 @@
                             ) : (
                                 <div className="space-y-6 w-full">
                                     <section className="bg-slate-900 p-6 rounded-3xl border border-slate-800">
-                                        <h3 className="text-xs font-bold text-blue-400 mb-6 uppercase tracking-widest">Game Management</h3>
+                                        <h3 className="text-xs font-bold text-blue-400 mb-6 uppercase tracking-widest">게임 관리</h3>
                                         <div className="grid grid-cols-2 gap-4">
                                             <button onClick={startNextRound} disabled={gameState?.round >= 5} className="bg-blue-600 py-4 rounded-2xl font-bold shadow-lg disabled:opacity-50">
                                                 {gameState?.round >= 5 ? "미션 종료" : `미션 ${(gameState?.round || 0) + 1} 시작`}
                                             </button>
                                             <button onClick={startInvestment} className="bg-emerald-600 py-4 rounded-2xl font-bold shadow-lg">투자 시작</button>
                                         </div>
-                                        <button onClick={resetGame} className="mt-4 text-[10px] text-rose-500 font-black uppercase tracking-widest w-full text-right">System Reset</button>
+                                        <button onClick={resetGame} className="mt-4 text-[10px] text-rose-500 font-black uppercase tracking-widest w-full text-right">시스템 초기화</button>
                                     </section>
 
                                     {gameState?.phase === 'password' && (
@@ -494,19 +494,23 @@
 
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                         <div className="bg-slate-900 p-6 rounded-3xl border border-slate-800">
-                                            <h3 className="text-xs font-bold text-yellow-500 mb-4 uppercase">Live Ranking</h3>
+                                            <h3 className="text-xs font-bold text-yellow-500 mb-4 uppercase">실시간 순위</h3>
                                             {[...allTeams].sort((a,b) => {
-                                                const getWorth = (t) => (t.budget || 0) + ASSETS.reduce((acc, ast) => acc + (t.portfolio?.[ast.id] || 0) * (gameState?.currentPrices?.[ast.id] || 10000), 0);
-                                                return getWorth(b) - getWorth(a);
-                                            }).map((t, i) => (
-                                                <div key={t.id} className="flex justify-between p-3 bg-slate-800/40 rounded-xl mb-2 border border-slate-800 text-sm">
-                                                    <span>{i+1}. {t.teamName}</span>
-                                                    <span className="text-emerald-400 font-mono">{( (t.budget || 0) + ASSETS.reduce((acc, ast) => acc + (t.portfolio?.[ast.id] || 0) * (gameState?.currentPrices?.[ast.id] || 10000), 0) ).toLocaleString()}원</span>
-                                                </div>
-                                            ))}
+                                                const valA = gameState?.phase === 'investment' ? (a.budget || 0) : (a.budget || 0) + ASSETS.reduce((acc, ast) => acc + (a.portfolio?.[ast.id] || 0) * (gameState?.currentPrices?.[ast.id] || 10000), 0);
+                                                const valB = gameState?.phase === 'investment' ? (b.budget || 0) : (b.budget || 0) + ASSETS.reduce((acc, ast) => acc + (b.portfolio?.[ast.id] || 0) * (gameState?.currentPrices?.[ast.id] || 10000), 0);
+                                                return valB - valA;
+                                            }).map((t, i) => {
+                                                const displayValue = gameState?.phase === 'investment' ? (t.budget || 0) : (t.budget || 0) + ASSETS.reduce((acc, ast) => acc + (t.portfolio?.[ast.id] || 0) * (gameState?.currentPrices?.[ast.id] || 10000), 0);
+                                                return (
+                                                    <div key={t.id} className="flex justify-between p-3 bg-slate-800/40 rounded-xl mb-2 border border-slate-800 text-sm">
+                                                        <span>{i+1}. {t.teamName}</span>
+                                                        <span className="text-emerald-400 font-mono">{displayValue.toLocaleString()}원</span>
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                         <div className="bg-slate-900 p-6 rounded-3xl border border-slate-800">
-                                            <h3 className="text-xs font-bold text-blue-400 mb-4 uppercase">Market Prices</h3>
+                                            <h3 className="text-xs font-bold text-blue-400 mb-4 uppercase">시장 가격</h3>
                                             <div className="grid grid-cols-2 gap-2">
                                                 {ASSETS.map(a => (
                                                     <div key={a.id} className="bg-slate-800/40 p-4 rounded-xl border border-slate-800 text-center">
