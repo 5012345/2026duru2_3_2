@@ -63,7 +63,7 @@
 
         const gameDocId = "global_game_session"; 
         const ADMIN_PASSWORD = "123123";
-        const PW_TIME_LIMIT = 100;
+        const PW_TIME_LIMIT = 60; // 1페이즈 60초로 단축 적용
         const DAY_TIME_LIMIT = 60;
         const ASSETS = [
             { id: 'flour', name: '밀가루', icon: '🍞' },
@@ -78,7 +78,7 @@
             RefreshCw: "🔄", TrendingUp: "📊", Trophy: "🏆",
             FileText: "📝", X: "✖️", AlertCircle: "⚠️",
             Volume2: "🔊", VolumeX: "🔇", History: "📜", Check: "✅",
-            Music: "🎵"
+            Music: "🎵", Info: "ℹ️"
         };
         const SafeIcon = ({ name, size = 18, className = "" }) => {
             return <span className={className} style={{ fontSize: size, lineHeight: 1 }}>{emojiMap[name] || "💠"}</span>;
@@ -153,6 +153,7 @@
             const [loading, setLoading] = useState(true);
             const [timeLeft, setTimeLeft] = useState(0);
             const [showAdminLogin, setShowAdminLogin] = useState(false);
+            const [showRules, setShowRules] = useState(false); // 규칙 팝업용 상태
             const [adminPwInput, setAdminPwInput] = useState("");
             const [errorMsg, setErrorMsg] = useState(null); 
 
@@ -376,19 +377,71 @@
             if (loading) return <div className="h-screen flex items-center justify-center font-bold text-slate-500 animate-pulse">데이터베이스 연동 중...</div>;
 
             if (!role) return (
-                <div className="h-screen flex items-center justify-center p-4">
-                    <div className="max-w-sm w-full bg-slate-900 p-8 rounded-3xl border border-slate-800 shadow-2xl fade-in text-center">
-                        <h1 className="text-2xl font-black bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent uppercase mb-8 leading-tight">연립방정식<br/>투자 경연대회</h1>
-                        <button onClick={() => setShowAdminLogin(true)} className="w-full bg-slate-800 py-4 rounded-2xl font-bold mb-4 flex items-center justify-center gap-2 border border-slate-700 hover:bg-slate-700 transition-all"><SafeIcon name="Lock" /> 관리자 접속</button>
+                <div className="h-screen flex items-center justify-center p-4 relative">
+                    <div className="max-w-sm w-full bg-slate-900 p-8 rounded-3xl border border-slate-800 shadow-2xl fade-in text-center z-10">
+                        <h1 className="text-2xl font-black bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent uppercase mb-6 leading-tight">연립방정식<br/>투자 경연대회</h1>
+                        
+                        <button onClick={() => setShowRules(true)} className="w-full bg-slate-800 py-3 rounded-2xl font-bold mb-4 flex items-center justify-center gap-2 border border-slate-700 hover:bg-slate-700 transition-all text-blue-400">
+                            <SafeIcon name="Info" /> 게임 규칙 보기
+                        </button>
+                        <button onClick={() => setShowAdminLogin(true)} className="w-full bg-slate-800 py-3 rounded-2xl font-bold mb-6 flex items-center justify-center gap-2 border border-slate-700 hover:bg-slate-700 transition-all">
+                            <SafeIcon name="Lock" /> 관리자 접속
+                        </button>
+
                         <div className="grid grid-cols-2 gap-2">
                             {[1,2,3,4,5,6,7,8,9,10].map(n => <button key={n} onClick={() => joinTeam(n)} className="bg-slate-800 py-3 rounded-xl border border-slate-700 font-bold hover:bg-blue-600 transition-all">{n}조 참가</button>)}
                         </div>
                     </div>
+
+                    {/* 규칙 안내 모달창 */}
+                    {showRules && (
+                        <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[200] p-6 overflow-y-auto" onClick={() => setShowRules(false)}>
+                            <div className="max-w-xl mx-auto bg-slate-900 border border-slate-700 p-8 rounded-3xl mt-10 shadow-2xl fade-in" onClick={e => e.stopPropagation()}>
+                                <div className="flex justify-between items-center mb-6 border-b border-slate-800 pb-4">
+                                    <h3 className="font-black text-2xl flex items-center gap-2 text-emerald-400"><SafeIcon name="Info"/> 게임 규칙 안내</h3>
+                                    <button onClick={() => setShowRules(false)} className="text-slate-500 hover:text-rose-500 transition-colors"><SafeIcon name="X" size={24}/></button>
+                                </div>
+                                <div className="space-y-6 text-slate-300 text-sm leading-relaxed">
+                                    <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800">
+                                        <h4 className="font-bold text-lg text-blue-400 mb-2">1페이즈: 정보 해독 미션</h4>
+                                        <ul className="list-disc pl-5 space-y-1">
+                                            <li>각 조는 제한시간(60초) 내에 3개의 연립방정식을 풀어야 합니다.</li>
+                                            <li>정답을 맞히면 최고급 정보인 <span className="text-amber-500 font-bold">A급 힌트</span>를 획득합니다.</li>
+                                            <li>시간 초과 또는 오답 시 <span className="text-slate-400 font-bold">B급 힌트</span>를 획득합니다.</li>
+                                        </ul>
+                                    </div>
+                                    <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800">
+                                        <h4 className="font-bold text-lg text-emerald-400 mb-2">2페이즈: 투자 경연</h4>
+                                        <ul className="list-disc pl-5 space-y-1">
+                                            <li>투자는 월요일부터 일요일까지, 매일 <span className="font-bold text-white">1분씩</span> 진행됩니다.</li>
+                                            <li>4가지 자원(밀가루, 석유, 목재, 콜라)의 가격이 매일 무작위로 변동됩니다.</li>
+                                            <li>주어진 기본 자본금을 활용해 자원을 사고팔아 자산을 불리세요.</li>
+                                            <li><span className="text-rose-400 font-bold">주의:</span> 일요일이 끝나기 전에 보유한 모든 자원을 현금화해야 합니다!</li>
+                                        </ul>
+                                    </div>
+                                    <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800">
+                                        <h4 className="font-bold text-lg text-amber-500 mb-2">힌트 카드 사용법</h4>
+                                        <ul className="list-disc pl-5 space-y-1">
+                                            <li>힌트는 언제든 사용 가능한 <span className="font-bold text-rose-400">소모성 아이템</span>입니다.</li>
+                                            <li><span className="text-amber-500 font-bold">A급 힌트</span>: 다음 요일의 '모든 자원(4개)' 변동 가격을 알려줍니다.</li>
+                                            <li><span className="text-slate-400 font-bold">B급 힌트</span>: 다음 요일의 '무작위 2개 자원' 변동 가격을 알려줍니다.</li>
+                                            <li>한 번 확인한 힌트는 우측 상단의 '열람 기록' 버튼을 통해 다시 볼 수 있습니다.</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                                <button onClick={() => setShowRules(false)} className="w-full mt-6 bg-blue-600 hover:bg-blue-500 py-4 rounded-xl font-bold transition text-white">확인 완료</button>
+                            </div>
+                        </div>
+                    )}
+
                     {showAdminLogin && (
-                        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center">
-                            <div className="bg-slate-900 p-8 rounded-3xl w-80 shadow-2xl border border-slate-800">
+                        <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-[100] flex items-center justify-center">
+                            <div className="bg-slate-900 p-8 rounded-3xl w-80 shadow-2xl border border-slate-800 fade-in">
                                 <input type="password" placeholder="비밀번호" value={adminPwInput} onChange={e => setAdminPwInput(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl mb-4 text-center text-xl font-bold" />
-                                <button onClick={() => { if(adminPwInput===ADMIN_PASSWORD) setRole('admin'); setShowAdminLogin(false); }} className="w-full bg-blue-600 py-4 rounded-xl font-bold">확인</button>
+                                <div className="flex gap-2">
+                                    <button onClick={() => setShowAdminLogin(false)} className="flex-1 bg-slate-800 py-4 rounded-xl font-bold text-slate-400">취소</button>
+                                    <button onClick={() => { if(adminPwInput===ADMIN_PASSWORD) setRole('admin'); setShowAdminLogin(false); }} className="flex-1 bg-blue-600 py-4 rounded-xl font-bold">확인</button>
+                                </div>
                             </div>
                         </div>
                     )}
