@@ -169,7 +169,8 @@
             useEffect(() => {
                 if (!audio1 || !audio2) return;
                 
-                if (!isBgmOn) {
+                // 참가자이거나 BGM이 꺼져있으면 재생하지 않음
+                if (!isBgmOn || role !== 'admin') {
                     audio1.pause();
                     audio2.pause();
                     return;
@@ -183,7 +184,7 @@
                     audio2.pause();
                     audio1.play().catch(e => console.log('BGM 재생 에러:', e));
                 }
-            }, [isBgmOn, gameState?.phase, audio1, audio2]);
+            }, [isBgmOn, gameState?.phase, audio1, audio2, role]);
 
             useEffect(() => {
                 const interval = setInterval(() => {
@@ -347,7 +348,6 @@
 
             const submitPassword = async (input) => {
                 const isCorrect = input.map(Number).join(',') === (gameState.answers || []).join(',');
-                // 소모형 힌트용 고유 아이디 생성
                 const newHint = { type: isCorrect ? 'A' : 'B', id: Date.now().toString() + Math.random().toString() };
 
                 await fb.updateDoc(fb.doc(fb.getFirestore(), 'investment_game', 'teams', 'entries', role), {
@@ -408,16 +408,27 @@
                             </div>
                         </div>
 
-                        {/* 상단 중앙 BGM 제어 버튼 */}
-                        <button onClick={() => setIsBgmOn(!isBgmOn)} className={`flex items-center gap-2 px-4 py-1.5 rounded-full border text-xs font-bold transition-all shadow-lg ${isBgmOn ? 'bg-amber-500/20 border-amber-500 text-amber-500' : 'bg-slate-800 border-slate-700 text-slate-500'}`}>
-                            <SafeIcon name={isBgmOn ? "Volume2" : "VolumeX"} size={16}/> {isBgmOn ? "BGM 켜짐" : "BGM 꺼짐"}
-                        </button>
+                        {/* 상단 중앙 BGM 제어 버튼 - 관리자에게만 표시 */}
+                        {role === 'admin' && (
+                            <button onClick={() => setIsBgmOn(!isBgmOn)} className={`flex items-center gap-2 px-4 py-1.5 rounded-full border text-xs font-bold transition-all shadow-lg ${isBgmOn ? 'bg-amber-500/20 border-amber-500 text-amber-500' : 'bg-slate-800 border-slate-700 text-slate-500'}`}>
+                                <SafeIcon name={isBgmOn ? "Volume2" : "VolumeX"} size={16}/> {isBgmOn ? "BGM 켜짐" : "BGM 꺼짐"}
+                            </button>
+                        )}
 
                         {gameState?.timerStart && (
                             <div className="bg-slate-950 px-4 py-2 rounded-2xl font-mono text-xl border border-slate-800 text-blue-400 flex items-center gap-2">
                                 <span className="text-xs text-slate-500 font-sans mr-1">{gameState.phase === 'investment' ? DAYS[gameState.currentDayIdx] : ''}</span>
                                 <SafeIcon name="Timer" size={18} className="animate-pulse" /> 
-                                {gameState.phase === 'investment' ? formatTime(timeLeft % 60) : formatTime(timeLeft)}
+                                {(() => {
+                                    // 타이머 동기화 완벽 보정 (관리자 페이즈 데이터에 타이머를 강제 귀속시켜 어긋남 방지)
+                                    if (gameState.phase === 'investment') {
+                                        const elapsedSec = (gameState.timerDuration || 420) - timeLeft;
+                                        const dayElapsed = elapsedSec - (gameState.currentDayIdx || 0) * DAY_TIME_LIMIT;
+                                        const dayRemaining = Math.max(0, Math.min(DAY_TIME_LIMIT, DAY_TIME_LIMIT - dayElapsed));
+                                        return formatTime(dayRemaining === DAY_TIME_LIMIT ? DAY_TIME_LIMIT - 1 : dayRemaining);
+                                    }
+                                    return formatTime(timeLeft);
+                                })()}
                             </div>
                         )}
                     </header>
@@ -436,7 +447,6 @@
                                     <button onClick={resetGame} className="mt-4 text-[10px] text-rose-500 font-black uppercase tracking-widest w-full text-right">System Reset</button>
                                 </section>
 
-                                {/* 관리자용 실시간 비밀번호 제출 현황판 (Phase 1 전용) */}
                                 {gameState?.phase === 'password' && (
                                     <div className="bg-slate-900 p-6 rounded-3xl border border-slate-800">
                                         <h3 className="text-xs font-bold text-emerald-400 mb-4 uppercase flex items-center gap-2">
@@ -499,7 +509,6 @@
             const [isBlackout, setIsBlackout] = useState(false);
             const [selectedHint, setSelectedHint] = useState(null);
             
-            // 새로운 힌트 제어용 State
             const [confirmHintType, setConfirmHintType] = useState(null);
             const [showHistory, setShowHistory] = useState(false);
 
@@ -511,7 +520,6 @@
                 }
             }, [gameState?.currentDayIdx]);
 
-            // 소모성 힌트 사용 처리 로직
             const handleUseHint = async (type) => {
                 const available = myTeamData?.hints?.filter(h => h.type === type) || [];
                 if (available.length === 0) return;
@@ -544,7 +552,7 @@
                 });
 
                 setConfirmHintType(null);
-                setSelectedHint(newUsedHint); // 모달창 바로 띄우기
+                setSelectedHint(newUsedHint); 
             };
 
             if (!gameState || gameState.phase === 'lobby') {
@@ -580,7 +588,6 @@
                             </div>
                         </div>
 
-                        {/* 힌트 열람 기록 모달창 */}
                         {showHistory && (
                             <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[200] p-6 overflow-y-auto" onClick={() => setShowHistory(false)}>
                                 <div className="max-w-lg mx-auto bg-slate-900 border border-slate-700 p-8 rounded-3xl mt-10 shadow-2xl fade-in" onClick={e => e.stopPropagation()}>
@@ -602,7 +609,6 @@
                             </div>
                         )}
 
-                        {/* 힌트 사용 확인 모달창 */}
                         {confirmHintType && (
                             <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[200] flex items-center justify-center p-6" onClick={() => setConfirmHintType(null)}>
                                 <div className="bg-slate-900 border-2 border-slate-700 p-8 rounded-3xl max-w-sm w-full text-center fade-in shadow-2xl" onClick={e => e.stopPropagation()}>
@@ -619,7 +625,6 @@
                             </div>
                         )}
 
-                        {/* 결과 출력 모달창 */}
                         {selectedHint && (
                             <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[200] flex items-center justify-center p-6" onClick={() => setSelectedHint(null)}>
                                 <div className="bg-slate-900 border-2 border-amber-500 p-8 rounded-3xl max-w-sm w-full shadow-[0_0_50px_rgba(245,158,11,0.3)] fade-in" onClick={e => e.stopPropagation()}>
@@ -641,7 +646,6 @@
                                 <div className="bg-slate-900 p-6 rounded-[2rem] border border-slate-800 shadow-xl overflow-hidden relative">
                                     <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-emerald-500"></div>
                                     
-                                    {/* 열람 기록 버튼 우측 상단 배치 */}
                                     <div className="flex justify-between items-center mb-6">
                                         <h3 className="font-bold text-emerald-400 uppercase text-[10px] tracking-widest flex items-center gap-2">
                                             <SafeIcon name="TrendingUp" size={14}/> {DAYS[gameState.currentDayIdx]} Market
